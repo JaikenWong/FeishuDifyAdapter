@@ -32,6 +32,19 @@
                 <button id="refreshBtn" type="button" class="ghost-btn">刷新</button>
             </div>
         </div>
+        <div class="config-toolbar">
+            <label class="search-field">
+                <span class="search-label">搜索</span>
+                <input type="search" id="configSearch" placeholder="按名称、App ID、Dify URL 过滤…" autocomplete="off" enterkeyhint="search">
+            </label>
+            <label class="sort-field">
+                <span class="search-label">排序</span>
+                <select id="configSort" aria-label="列表排序方式">
+                    <option value="created">创建时间（新的在前）</option>
+                    <option value="name">名称（A→Z）</option>
+                </select>
+            </label>
+        </div>
         <div id="cardList" class="card-grid"></div>
     </section>
 </main>

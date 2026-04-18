@@ -1,4 +1,6 @@
 const cardList = document.getElementById('cardList');
+const configSearch = document.getElementById('configSearch');
+const configSort = document.getElementById('configSort');
 const configForm = document.getElementById('configForm');
 const formMessage = document.getElementById('formMessage');
 const refreshBtn = document.getElementById('refreshBtn');
@@ -15,18 +17,48 @@ async function ensureLogin() {
     }
 }
 
+function getSearchQuery() {
+    return configSearch ? String(configSearch.value).trim() : '';
+}
+
+function getSortParam() {
+    if (!configSort) {
+        return 'created';
+    }
+    const v = String(configSort.value).trim();
+    return v === 'name' ? 'name' : 'created';
+}
+
 async function loadCards() {
-    const response = await fetch('/api/bot-configs');
+    const q = getSearchQuery();
+    const sort = getSortParam();
+    const params = new URLSearchParams();
+    if (q) {
+        params.set('q', q);
+    }
+    if (sort !== 'created') {
+        params.set('sort', sort);
+    }
+    const query = params.toString();
+    const url = query ? `/api/bot-configs?${query}` : '/api/bot-configs';
+    const response = await fetch(url);
     if (!response.ok) {
         cardList.innerHTML = '<p class="muted">加载失败，请重新登录。</p>';
         return;
     }
     const cards = await response.json();
     if (!cards.length) {
-        cardList.innerHTML = `
-            <div class="panel empty-state">
-                <p class="muted">还没有机器人配置。点击「添加配置」填写飞书与 Dify 参数即可创建。</p>
-            </div>`;
+        if (q) {
+            cardList.innerHTML = `
+                <div class="panel empty-state">
+                    <p class="muted">没有匹配「${escapeHtml(q)}」的配置，可换个关键词或清空搜索框。</p>
+                </div>`;
+        } else {
+            cardList.innerHTML = `
+                <div class="panel empty-state">
+                    <p class="muted">还没有机器人配置。点击「添加配置」填写飞书与 Dify 参数即可创建。</p>
+                </div>`;
+        }
         return;
     }
     cardList.innerHTML = cards.map(renderCard).join('');
@@ -58,6 +90,7 @@ function renderCard(card) {
                     ${card.longConnectionEnabled ? '关闭长连接' : '开启长连接'}
                 </button>
                 <button type="button" class="ghost-btn" data-action="export" data-id="${card.id}">导出记录</button>
+                <button type="button" class="ghost-btn danger-btn" data-action="delete" data-id="${card.id}" data-robot-name="${encodeURIComponent(card.robotName)}">删除配置</button>
             </div>
         </article>
     `;
@@ -77,6 +110,45 @@ function bindCardActions() {
     document.querySelectorAll('[data-action="export"]').forEach(button => {
         button.addEventListener('click', () => {
             window.location.href = `/api/bot-configs/${button.dataset.id}/export`;
+        });
+    });
+
+    document.querySelectorAll('[data-action="delete"]').forEach(button => {
+        button.addEventListener('click', async () => {
+            const id = button.dataset.id;
+            let robotLabel = '该配置';
+            try {
+                robotLabel = decodeURIComponent(button.dataset.robotName || '') || robotLabel;
+            } catch {
+                /* ignore malformed name */
+            }
+            if (!confirm(`确定删除「${robotLabel}」？将同时删除该配置下的对话导出数据，且不可恢复。`)) {
+                return;
+            }
+            button.disabled = true;
+            let response;
+            try {
+                response = await fetch(`/api/bot-configs/${id}`, {method: 'DELETE'});
+            } catch {
+                button.disabled = false;
+                alert('网络异常，请稍后重试');
+                return;
+            }
+            button.disabled = false;
+            if (!response.ok) {
+                let message = '删除失败';
+                try {
+                    const body = await response.json();
+                    if (body && body.message) {
+                        message = body.message;
+                    }
+                } catch {
+                    /* ignore */
+                }
+                alert(message);
+                return;
+            }
+            await loadCards();
         });
     });
 }
@@ -181,6 +253,14 @@ document.querySelectorAll('[data-toggle-target]').forEach(button => {
 });
 
 refreshBtn.addEventListener('click', loadCards);
+
+let searchDebounceTimer;
+configSearch.addEventListener('input', () => {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => loadCards(), 280);
+});
+
+configSort.addEventListener('change', () => loadCards());
 
 logoutBtn.addEventListener('click', async () => {
     await fetch('/api/auth/logout', {method: 'POST'});

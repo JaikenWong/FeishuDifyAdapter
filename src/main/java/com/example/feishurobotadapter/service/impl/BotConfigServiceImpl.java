@@ -4,6 +4,7 @@ import com.example.feishurobotadapter.dto.BotConfigRequest;
 import com.example.feishurobotadapter.dto.BotConfigResponse;
 import com.example.feishurobotadapter.entity.BotConfig;
 import com.example.feishurobotadapter.repository.BotConfigRepository;
+import com.example.feishurobotadapter.repository.ConversationRecordRepository;
 import com.example.feishurobotadapter.service.BotConfigService;
 import com.example.feishurobotadapter.service.FeishuLongConnectionManager;
 import java.time.LocalDateTime;
@@ -15,16 +16,33 @@ import org.springframework.transaction.annotation.Transactional;
 public class BotConfigServiceImpl implements BotConfigService {
 
     private final BotConfigRepository botConfigRepository;
+    private final ConversationRecordRepository conversationRecordRepository;
     private final FeishuLongConnectionManager longConnectionManager;
 
-    public BotConfigServiceImpl(BotConfigRepository botConfigRepository, FeishuLongConnectionManager longConnectionManager) {
+    public BotConfigServiceImpl(
+            BotConfigRepository botConfigRepository,
+            ConversationRecordRepository conversationRecordRepository,
+            FeishuLongConnectionManager longConnectionManager) {
         this.botConfigRepository = botConfigRepository;
+        this.conversationRecordRepository = conversationRecordRepository;
         this.longConnectionManager = longConnectionManager;
     }
 
     @Override
-    public List<BotConfigResponse> list() {
-        return botConfigRepository.findAllByOrderByCreatedAtDesc().stream().map(this::toResponse).toList();
+    public List<BotConfigResponse> list(String keyword, String sort) {
+        String trimmed = keyword == null ? "" : keyword.trim();
+        boolean byName = "name".equalsIgnoreCase(sort == null ? "" : sort.trim());
+        List<BotConfig> rows;
+        if (trimmed.isEmpty()) {
+            rows = byName
+                    ? botConfigRepository.findAllByOrderByRobotNameAsc()
+                    : botConfigRepository.findAllByOrderByCreatedAtDesc();
+        } else {
+            rows = byName
+                    ? botConfigRepository.searchByKeywordOrderByRobotNameAsc(trimmed)
+                    : botConfigRepository.searchByKeywordOrderByCreatedAtDesc(trimmed);
+        }
+        return rows.stream().map(this::toResponse).toList();
     }
 
     @Override
@@ -61,6 +79,17 @@ public class BotConfigServiceImpl implements BotConfigService {
             longConnectionManager.disable(id);
         }
         return toResponse(botConfigRepository.save(config));
+    }
+
+    @Override
+    @Transactional
+    public void delete(Long id) {
+        if (!botConfigRepository.existsById(id)) {
+            throw new IllegalArgumentException("配置不存在");
+        }
+        longConnectionManager.disable(id);
+        conversationRecordRepository.deleteByBotConfigId(id);
+        botConfigRepository.deleteById(id);
     }
 
     private BotConfigResponse toResponse(BotConfig config) {

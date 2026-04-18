@@ -6,9 +6,14 @@ import java.util.List;
 
 public interface BotConfigService {
 
-    List<BotConfigResponse> list();
+    /**
+     * @param sort {@code created}：按创建时间倒序（新的在前）；{@code name}：按机器人名称升序
+     */
+    List<BotConfigResponse> list(String keyword, String sort);
 
     BotConfigResponse create(BotConfigRequest request);
 
     BotConfigResponse toggleLongConnection(Long id, boolean enabled);
+
+    void delete(Long id);
 }

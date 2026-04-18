@@ -11,8 +11,6 @@
     /* 主内容区：尽量占满宽屏，减少两侧留白 */
     --shell-max: min(1760px, calc(100vw - 40px));
     --shell-pad-x: 20px;
-    /* 卡片列：更小 min → 同宽下一行更多列；auto-fit 折叠空列，避免只有 1 张卡时过窄 */
-    --card-col-min: 200px;
     --card-max-w: 400px;
     --card-gap: 12px;
 }
@@ -82,6 +80,7 @@ body {
     justify-content: space-between;
     align-items: center;
     gap: 16px;
+    flex-wrap: wrap;
 }
 
 .topbar {
@@ -136,6 +135,60 @@ body {
     gap: 10px;
     align-items: center;
     justify-content: flex-end;
+}
+
+.config-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.search-field {
+    flex: 1 1 min(420px, 100%);
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sort-field {
+    flex: 0 1 auto;
+    min-width: min(200px, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sort-field select {
+    width: 100%;
+    max-width: 280px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    padding: 12px 14px;
+    font-size: 15px;
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--text);
+    cursor: pointer;
+}
+
+.search-label {
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.search-field input {
+    width: 100%;
+}
+
+.ghost-btn.danger-btn {
+    color: #9a2c1f;
+    border-color: rgba(154, 44, 31, 0.38);
+}
+
+.ghost-btn.danger-btn:hover {
+    background: rgba(154, 44, 31, 0.09);
 }
 
 .eyebrow {
@@ -300,15 +353,20 @@ button:hover {
     line-height: 1.45;
 }
 
+/* 流式排列：从左依次排布，仅 gap 间距，放不下自动换行（避免 grid + 1fr 把两卡甩到行两端） */
 .card-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(var(--card-col-min), 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: var(--card-gap);
     align-items: stretch;
+    justify-content: flex-start;
+    align-content: flex-start;
 }
 
 .card-grid > .empty-state {
-    grid-column: 1 / -1;
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: none;
 }
 
 .config-card {
@@ -317,9 +375,9 @@ button:hover {
     gap: 12px;
     animation: rise 0.35s ease;
     min-width: 0;
-    width: 100%;
+    flex: 0 0 auto;
+    width: min(var(--card-max-w), 100%);
     max-width: var(--card-max-w);
-    justify-self: start;
 }
 
 .config-card h2 {
@@ -465,13 +523,9 @@ body.modal-open {
         margin: 16px auto;
     }
 
-    .card-grid {
-        grid-template-columns: 1fr;
-    }
-
     .config-card {
         max-width: none;
-        justify-self: stretch;
+        width: 100%;
     }
 
     .form-layout {

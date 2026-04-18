@@ -9,6 +9,9 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface ConversationRecordRepository extends JpaRepository<ConversationRecord, Long> {
 
+    @Modifying
+    void deleteByBotConfigId(Long botConfigId);
+
     List<ConversationRecord> findByBotConfigIdOrderByCreatedAtDesc(Long botConfigId);
 
     /**
