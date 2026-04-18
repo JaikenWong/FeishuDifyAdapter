@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git rm:*)",
+      "Bash(README.md:*)",
+      "Bash(git commit -m \"Initial commit: Feishu Robot Adapter for Dify:*)"
+    ]
+  }
+}

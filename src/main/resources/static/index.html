@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>飞书机器人配置台</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="page-bg"></div>
+<main class="app-shell">
+    <header class="topbar">
+        <div>
+            <p class="eyebrow">Feishu x Dify</p>
+            <h1>机器人配置台</h1>
+        </div>
+        <button id="logoutBtn" type="button" class="ghost-btn">退出登录</button>
+    </header>
+
+    <section>
+        <div class="section-head">
+            <div>
+                <h2>机器人配置</h2>
+                <p class="muted section-sub">管理飞书机器人与 Dify 的对接，在卡片上开启或关闭长连接监听。</p>
+            </div>
+            <div class="section-actions">
+                <button id="addConfigBtn" type="button">添加配置</button>
+                <button id="refreshBtn" type="button" class="ghost-btn">刷新</button>
+            </div>
+        </div>
+        <div id="cardList" class="card-grid"></div>
+    </section>
+</main>
+
+<div id="addConfigModal" class="modal" aria-hidden="true" role="dialog" aria-labelledby="modalTitle">
+    <div class="modal-backdrop" data-close-modal tabindex="-1"></div>
+    <div class="modal-dialog panel">
+        <div class="modal-header">
+            <div>
+                <h2 id="modalTitle">新增机器人配置</h2>
+                <p class="muted modal-lead">填写飞书与 Dify 参数后保存，即可在列表中看到新卡片。</p>
+            </div>
+            <button type="button" class="ghost-btn modal-close" id="modalCloseBtn" aria-label="关闭">关闭</button>
+        </div>
+        <div class="form-layout modal-form-layout">
+            <form id="configForm" class="grid-form">
+                <fieldset class="form-section form-full">
+                    <legend>基础信息</legend>
+                    <div class="grid-form inner-grid">
+                        <div class="form-full">
+                            <label>
+                                <span>机器人名称 *</span>
+                                <input name="robotName" placeholder="例如：我的 Dify 顾问" required autocomplete="off">
+                            </label>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset class="form-section form-full">
+                    <legend>飞书接入参数</legend>
+                    <div class="grid-form inner-grid">
+                        <div>
+                            <label>
+                                <span>飞书 App ID *</span>
+                                <input name="appId" placeholder="从飞书开放平台复制" required autocomplete="off">
+                            </label>
+                        </div>
+                        <div>
+                            <label>
+                                <span>飞书 App Secret *</span>
+                                <div class="input-with-action">
+                                    <input name="appSecret" type="password" placeholder="从飞书开放平台复制" required autocomplete="new-password">
+                                    <button type="button" class="ghost-btn input-action" data-toggle-target="appSecret">显示</button>
+                                </div>
+                            </label>
+                        </div>
+                        <div>
+                            <label>
+                                <span>Verification Token</span>
+                                <input name="verificationToken" placeholder="事件订阅中的 Verification Token（可留空）" autocomplete="off">
+                            </label>
+                        </div>
+                        <div>
+                            <label>
+                                <span>Encrypt Key</span>
+                                <div class="input-with-action">
+                                    <input name="encryptKey" type="password" placeholder="事件订阅中的 Encrypt Key（可留空）" autocomplete="new-password">
+                                    <button type="button" class="ghost-btn input-action" data-toggle-target="encryptKey">显示</button>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset class="form-section form-full">
+                    <legend>Dify 参数</legend>
+                    <div class="grid-form inner-grid">
+                        <div>
+                            <label>
+                                <span>Dify Base URL *</span>
+                                <input name="difyUrl" type="url" placeholder="例如：http://127.0.0.1:8081 或 http://127.0.0.1:8081/v1" required autocomplete="off">
+                            </label>
+                        </div>
+                        <div>
+                            <label>
+                                <span>Dify API Key *</span>
+                                <div class="input-with-action">
+                                    <input name="difyApiKey" type="password" placeholder="在 Dify 应用中复制 API Key" required autocomplete="new-password">
+                                    <button type="button" class="ghost-btn input-action" data-toggle-target="difyApiKey">显示</button>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <div class="form-actions form-full">
+                    <button type="submit" id="submitBtn">创建配置</button>
+                    <button type="reset" class="ghost-btn">清空输入</button>
+                </div>
+            </form>
+
+            <aside class="tips-card">
+                <h3>填写建议</h3>
+                <ul>
+                    <li>先确认飞书事件订阅已开启，消息事件已配置。</li>
+                    <li>Dify URL 可填基础地址，系统会自动补全到接口版本。</li>
+                    <li>敏感密钥默认隐藏，点击「显示」可临时核对。</li>
+                </ul>
+            </aside>
+        </div>
+        <p id="formMessage" class="message"></p>
+    </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

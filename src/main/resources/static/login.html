@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>飞书机器人适配器登录</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="login-body">
+<main class="login-shell">
+    <section class="login-panel">
+        <p class="eyebrow">Feishu Robot Adapter</p>
+        <h1>登录后台</h1>
+        <p class="muted">默认账号：admin / admin123</p>
+        <form id="loginForm" class="stack">
+            <label>
+                <span>用户名</span>
+                <input name="username" placeholder="admin" required>
+            </label>
+            <label>
+                <span>密码</span>
+                <input name="password" type="password" placeholder="admin123" required>
+            </label>
+            <button type="submit">登录</button>
+        </form>
+        <p id="loginMessage" class="message"></p>
+    </section>
+</main>
+<script src="/login.js"></script>
+</body>
+</html>
