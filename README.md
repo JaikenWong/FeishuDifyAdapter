@@ -57,36 +57,67 @@
 
 - 按需配置 **事件订阅**中的 **Verification Token**、**Encrypt Key**（若启用加密），并与本服务表单中填写一致，供 SDK 内 `EventDispatcher` 校验/解密事件。
 
-### 3. 建议开通的权限（scope）
+### 3. 权限（scope）清单
 
-以下按**功能**归类，在开放平台「权限管理」中搜索并勾选；**发布新版本**并由**管理员审核**后生效。
+在开放平台「权限管理」中搜索并勾选；**创建版本并发布**，由**租户管理员审核**后生效。下列为与本项目**联调通过**的权限集合（可按实际产品裁剪：未使用 Aily、人事附件等功能时可去掉对应项）。
 
-#### 消息与机器人（必选）
+#### 3.1 完整 JSON（便于复制核对）
 
-| 权限能力（名称以控制台为准） | 用途 |
-|------------------------------|------|
-| 获取与发送单聊、群组消息（如 `im:message`、`im:message:send_as_bot` 等，以控制台列表为准） | 收消息、以机器人身份回复/更新卡片 |
-| 读取用户发给机器人的单聊消息 / 群组消息 | 接收用户消息事件 |
+```json
+{
+  "scopes": {
+    "tenant": [
+      "contact:user.basic_profile:readonly",
+      "contact:user.email:readonly",
+      "aily:file:read",
+      "aily:file:write",
+      "application:application.app_message_stats.overview:readonly",
+      "application:application:self_manage",
+      "application:bot.menu:write",
+      "cardkit:card:read",
+      "cardkit:card:write",
+      "contact:contact.base:readonly",
+      "contact:user.employee_id:readonly",
+      "contact:user.employee_number:read",
+      "corehr:file:download",
+      "event:ip_list",
+      "im:chat.access_event.bot_p2p_chat:read",
+      "im:chat.members:bot_access",
+      "im:message",
+      "im:message.group_at_msg:readonly",
+      "im:message.p2p_msg:readonly",
+      "im:message:readonly",
+      "im:message:send_as_bot",
+      "im:resource"
+    ],
+    "user": [
+      "aily:file:read",
+      "aily:file:write",
+      "contact:contact.base:readonly",
+      "im:chat.access_event.bot_p2p_chat:read",
+      "im:message"
+    ]
+  }
+}
+```
 
-> 具体 API 名称以飞书当前版本文档为准，请搜索 **「接收消息」「发送消息」** 相关权限。
+#### 3.2 与本服务相关的权限说明（tenant 为主）
 
-#### 卡片与资源（用于交互式卡片、图片等）
+| Scope | 说明 |
+|-------|------|
+| `im:message` / `im:message:send_as_bot` / `im:message:readonly` 等 | 收发消息、以机器人发消息、读会话消息 |
+| `im:resource` | 下载消息内图片/文件（多模态转发 Dify） |
+| `im:chat.members:bot_access` / `im:chat.access_event.bot_p2p_chat:read` | 群成员与机器人单聊相关事件 |
+| `cardkit:card:read` / `cardkit:card:write` | 创建与更新交互式卡片 |
+| `contact:contact.base:readonly` | 通讯录基础能力，配合获取用户 |
+| `contact:user.basic_profile:readonly` | 用户基础资料 |
+| `contact:user.email:readonly` | 用户邮箱（传入 Dify `inputs`） |
+| `contact:user.employee_id:readonly` | 租户内 user_id 等标识 |
+| `contact:user.employee_number:read` | **工号**（作 Dify `user` 与 `inputs` 时优先） |
+| `application:application:self_manage` / `application:bot.menu:write` 等 | 应用自管、机器人菜单等（按需在控制台配置） |
+| `aily:file:*`、`corehr:file:download` | 若未使用 Aily / CoreHR 文件能力，可按需移除 |
 
-| 权限能力 | 用途 |
-|----------|------|
-| 卡片相关（如 `cardkit` 创建/更新卡片类权限，以控制台为准） | 创建与流式更新交互式卡片 |
-| 下载消息内资源 / 读取图片与文件 | 下载用户发送的图片、文件再上传 Dify |
-
-#### 通讯录（可选，用于用户名、工号、邮箱进入 Dify）
-
-若需要在 Dify 中区分用户身份或带入**姓名 / 工号 / 邮箱**，需能调用「获取用户」类通讯录接口，例如：
-
-| 权限能力 | 用途 |
-|----------|------|
-| 获取通讯录基本信息，或以应用身份读通讯录（如 `contact:contact.base:readonly`、`contact:contact:access_as_app` 等，**任选其一组合**，以官方文档为准） | 调用 `contact/v3/users/:user_id` |
-| 获取用户基本信息 | 返回姓名、英文名等 |
-| 查看成员工号 | `employee_no` 字段 |
-| 获取用户邮箱信息 | 邮箱字段 |
+**user** 侧 scope 为「用户身份」授权场景下使用；与 **tenant** 侧配合以控制台实际要求为准。
 
 同时需在**管理后台**将应用授权到**可见的部门/人员范围**，否则会出现「通讯录拉取失败、仅有群聊 @ 展示名」等情况。
 
