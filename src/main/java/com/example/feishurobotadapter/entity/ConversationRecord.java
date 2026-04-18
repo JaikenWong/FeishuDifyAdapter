@@ -27,6 +27,12 @@ public class ConversationRecord {
     @Column(length = 128)
     private String openId;
 
+    /**
+     * 调用 Dify 时使用的 {@code user}，与飞书 open_id 可能不同：优先为工号，便于在 Dify 侧以工号区分身份。
+     */
+    @Column(length = 128)
+    private String difyUserKey;
+
     @Column(length = 128)
     private String chatId;
 

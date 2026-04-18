@@ -40,5 +40,8 @@ application-local.yml
 application-dev.yml
 .env
 
+# Cursor / local tooling
+.claude/
+
 # Maven local repo (should not be here but just in case)
 .m2/

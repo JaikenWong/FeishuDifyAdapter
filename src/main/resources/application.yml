@@ -3,6 +3,7 @@ server:
 
 spring:
   datasource:
+    # 文件库相对「进程工作目录」。换目录启动会指向另一份库，表现为会话记录丢失。生产建议改为绝对路径。
     url: jdbc:h2:file:./data/feishu-robot-adapter
     driver-class-name: org.h2.Driver
     username: sa

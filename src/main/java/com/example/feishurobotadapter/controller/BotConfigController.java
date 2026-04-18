@@ -51,11 +51,12 @@ public class BotConfigController {
     @GetMapping("/{id}/export")
     public ResponseEntity<String> export(@PathVariable Long id) {
         List<ConversationRecord> records = conversationRecordService.listByBotConfigId(id);
-        StringBuilder csv = new StringBuilder("时间,OpenId,ChatId,飞书消息ID,Dify会话ID,问题,回答\n");
+        StringBuilder csv = new StringBuilder("时间,OpenId,Dify用户标识,ChatId,飞书消息ID,Dify会话ID,问题,回答\n");
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         for (ConversationRecord record : records) {
             csv.append(escapeCsv(record.getCreatedAt().format(formatter))).append(',')
                     .append(escapeCsv(record.getOpenId())).append(',')
+                    .append(escapeCsv(record.getDifyUserKey())).append(',')
                     .append(escapeCsv(record.getChatId())).append(',')
                     .append(escapeCsv(record.getFeishuMessageId())).append(',')
                     .append(escapeCsv(record.getDifyConversationId())).append(',')

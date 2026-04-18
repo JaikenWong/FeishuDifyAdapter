@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+  <title>Feishu Robot Adapter</title>
+  <defs>
+    <linearGradient id="logoFace" x1="8" y1="10" x2="56" y2="54" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d4724a"/>
+      <stop offset="0.45" stop-color="#bf5a36"/>
+      <stop offset="1" stop-color="#8d3f22"/>
+    </linearGradient>
+    <linearGradient id="logoBolt" x1="28" y1="14" x2="36" y2="50" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fffdf8"/>
+      <stop offset="1" stop-color="#f0e8dc"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="15" fill="url(#logoFace)"/>
+  <circle cx="14" cy="18" r="3.5" fill="#7ea98f" opacity="0.95"/>
+  <circle cx="50" cy="46" r="3.5" fill="#2f7d5c" opacity="0.95"/>
+  <path d="M 17 20 Q 32 32 47 44" stroke="rgba(255,250,242,0.35)" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <path fill="url(#logoBolt)" d="M 37 12 L 23 30 h 8.5 l -6.5 22 20.5-26.5 H 37.5 L 44 12 Z"/>
+</svg>

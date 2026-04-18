@@ -8,9 +8,11 @@ import com.lark.oapi.event.EventDispatcher;
 import com.lark.oapi.service.im.ImService;
 import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
 import com.lark.oapi.ws.Client;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.stereotype.Service;
 
@@ -42,8 +44,7 @@ public class InMemoryFeishuLongConnectionManager implements FeishuLongConnection
         if (client == null) {
             return;
         }
-        tryInvoke(client, "stop");
-        tryInvoke(client, "close");
+        shutdownWsClient(client);
         log.info("[FeishuLongConnection] 长连接已关闭: configId={}", configId);
     }
 
@@ -76,12 +77,28 @@ public class InMemoryFeishuLongConnectionManager implements FeishuLongConnection
         return client;
     }
 
-    private void tryInvoke(Client client, String methodName) {
+    /**
+     * SDK 仅公开 {@link Client#start()}；关闭走受保护的 {@code disconnect()}（内部 {@code close(1000, "client closed")}）。
+     * 默认自动重连为 true，需先关掉再 {@link ExecutorService#shutdownNow()} 线程池，避免残留任务重连。
+     */
+    private void shutdownWsClient(Client client) {
         try {
-            Method method = client.getClass().getMethod(methodName);
-            method.invoke(client);
-        } catch (Exception ignored) {
-            // The SDK version may not expose an explicit stop/close method.
+            Field autoReconnectField = Client.class.getDeclaredField("autoReconnect");
+            autoReconnectField.setAccessible(true);
+            autoReconnectField.set(client, Boolean.FALSE);
+
+            Method disconnect = Client.class.getDeclaredMethod("disconnect");
+            disconnect.setAccessible(true);
+            disconnect.invoke(client);
+
+            Field executorField = Client.class.getDeclaredField("executor");
+            executorField.setAccessible(true);
+            ExecutorService executor = (ExecutorService) executorField.get(client);
+            if (executor != null) {
+                executor.shutdownNow();
+            }
+        } catch (ReflectiveOperationException e) {
+            log.warn("[FeishuLongConnection] 反射关闭 WebSocket 失败（升级 oapi-sdk 后可能需调整字段名）: {}", e.toString());
         }
     }
 }

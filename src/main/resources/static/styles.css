@@ -8,6 +8,13 @@
     --accent-dark: #8d3f22;
     --green: #2f7d5c;
     --shadow: 0 24px 60px rgba(95, 65, 45, 0.15);
+    /* 主内容区：尽量占满宽屏，减少两侧留白 */
+    --shell-max: min(1760px, calc(100vw - 40px));
+    --shell-pad-x: 20px;
+    /* 卡片列：更小 min → 同宽下一行更多列；auto-fit 折叠空列，避免只有 1 张卡时过窄 */
+    --card-col-min: 200px;
+    --card-max-w: 400px;
+    --card-gap: 12px;
 }
 
 * {
@@ -45,8 +52,11 @@ body {
 }
 
 .app-shell {
-    width: min(1120px, calc(100% - 32px));
-    margin: 32px auto;
+    width: var(--shell-max);
+    max-width: 100%;
+    margin: 28px auto;
+    padding: 0 var(--shell-pad-x);
+    box-sizing: border-box;
 }
 
 .login-panel,
@@ -78,9 +88,46 @@ body {
     margin-bottom: 20px;
 }
 
+.brand-lockup {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+}
+
+.brand-text {
+    min-width: 0;
+}
+
+.brand-text h1 {
+    overflow-wrap: anywhere;
+}
+
+.brand-mark {
+    flex-shrink: 0;
+    display: block;
+    width: 52px;
+    height: 52px;
+    border-radius: 15px;
+    box-shadow: 0 10px 28px rgba(191, 90, 54, 0.32);
+}
+
+.login-brand {
+    display: flex;
+    justify-content: center;
+    margin: 0 0 12px;
+}
+
+.brand-mark--hero {
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+    box-shadow: 0 14px 36px rgba(191, 90, 54, 0.28);
+}
+
 .section-sub {
     margin-top: 6px;
-    max-width: 520px;
+    max-width: min(720px, 100%);
 }
 
 .section-actions {
@@ -255,8 +302,9 @@ button:hover {
 
 .card-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(var(--card-col-min), 1fr));
+    gap: var(--card-gap);
+    align-items: stretch;
 }
 
 .card-grid > .empty-state {
@@ -264,10 +312,20 @@ button:hover {
 }
 
 .config-card {
-    padding: 22px;
+    padding: 16px 18px;
     display: grid;
-    gap: 16px;
+    gap: 12px;
     animation: rise 0.35s ease;
+    min-width: 0;
+    width: 100%;
+    max-width: var(--card-max-w);
+    justify-self: start;
+}
+
+.config-card h2 {
+    font-size: clamp(17px, 2.2vw, 20px);
+    line-height: 1.25;
+    word-break: break-word;
 }
 
 .pill {
@@ -289,9 +347,10 @@ button:hover {
 
 .meta-list {
     display: grid;
-    gap: 10px;
-    font-size: 14px;
+    gap: 8px;
+    font-size: 13px;
     color: var(--muted);
+    word-break: break-word;
 }
 
 .meta-list strong {
@@ -397,9 +456,22 @@ body.modal-open {
 }
 
 @media (max-width: 720px) {
+    :root {
+        --shell-max: 100%;
+        --shell-pad-x: 12px;
+    }
+
     .app-shell {
-        width: calc(100% - 20px);
-        margin: 20px auto;
+        margin: 16px auto;
+    }
+
+    .card-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .config-card {
+        max-width: none;
+        justify-self: stretch;
     }
 
     .form-layout {

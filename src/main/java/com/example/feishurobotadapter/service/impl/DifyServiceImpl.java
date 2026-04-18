@@ -1,17 +1,26 @@
 package com.example.feishurobotadapter.service.impl;
 
+import com.example.feishurobotadapter.dto.DifyMessageFile;
 import com.example.feishurobotadapter.dto.DifyStreamChunk;
+import com.example.feishurobotadapter.dto.DifyUploadedFile;
 import com.example.feishurobotadapter.entity.BotConfig;
 import com.example.feishurobotadapter.service.DifyService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.stereotype.Service;
@@ -20,10 +29,10 @@ import reactor.core.publisher.Sinks;
 
 /**
  * Dify API 服务实现
- * 负责调用 Dify 的流式聊天接口，解析 SSE 响应并返回给上层处理
+ * - /chat-messages：流式对话，支持 files 参数
+ * - /files/upload：上传图片或文件，得到 upload_file_id
  *
- * 这里使用传统的 HttpURLConnection + BufferedReader.readLine() 来保证按行正确解析SSE
- * 参考 plm-mcp-server 项目的成熟实现，比 WebFlux WebClient 更稳定可靠
+ * 流式响应使用 HttpURLConnection + BufferedReader.readLine() 保证按行正确解析 SSE
  */
 @Service
 @Log4j2
@@ -35,33 +44,50 @@ public class DifyServiceImpl implements DifyService {
         this.objectMapper = objectMapper;
     }
 
-    /**
-     * 调用 Dify 流式聊天接口
-     * @param config 机器人配置（包含 Dify URL 和 API Key）
-     * @param userId 用户ID（飞书 OpenId）
-     * @param query 用户问题
-     * @return Dify 流式响应块 Flux
-     */
     @Override
-    public Flux<DifyStreamChunk> streamChat(BotConfig config, String userId, String query) {
-        // 使用 Sinks 来桥接同步的回调到 Flux
+    public Flux<DifyStreamChunk> streamChat(
+            BotConfig config,
+            String userId,
+            String conversationId,
+            Map<String, String> inputVariables,
+            String query,
+            List<DifyUploadedFile> files
+    ) {
         Sinks.Many<DifyStreamChunk> sink = Sinks.many().multicast().onBackpressureBuffer();
 
-        // 在后台线程执行HTTP请求读取
         CompletableFuture.runAsync(() -> {
             HttpURLConnection conn = null;
             try {
                 String url = normalizeBaseUrl(config.getDifyUrl()) + "/chat-messages";
-                Map<String, Object> bodyMap = Map.of(
-                        "inputs", Map.of(),
-                        "query", query,
-                        "response_mode", "streaming",
-                        "conversation_id", "",
-                        "user", userId
-                );
+
+                Map<String, Object> bodyMap = new LinkedHashMap<>();
+                Map<String, Object> inputs = new LinkedHashMap<>();
+                if (inputVariables != null) {
+                    inputVariables.forEach(inputs::put);
+                }
+                bodyMap.put("inputs", inputs);
+                bodyMap.put("query", query == null ? "" : query);
+                bodyMap.put("response_mode", "streaming");
+                bodyMap.put("conversation_id", conversationId == null || conversationId.isBlank() ? "" : conversationId);
+                bodyMap.put("user", userId);
+                if (files != null && !files.isEmpty()) {
+                    List<Map<String, Object>> fileList = new ArrayList<>();
+                    for (DifyUploadedFile file : files) {
+                        fileList.add(Map.of(
+                                "type", file.type(),
+                                "transfer_method", "local_file",
+                                "upload_file_id", file.fileId()
+                        ));
+                    }
+                    bodyMap.put("files", fileList);
+                }
                 String requestBody = objectMapper.writeValueAsString(bodyMap);
 
-                log.info("[Dify] 开始请求: {}, query: {}", url, query);
+                log.info("[Dify] 开始请求: {}, conversationId={}, query 长度={}, 附件数={}",
+                        url,
+                        conversationId == null || conversationId.isBlank() ? "(新会话)" : conversationId,
+                        query == null ? 0 : query.length(),
+                        files == null ? 0 : files.size());
                 byte[] bodyBytes = requestBody.getBytes(StandardCharsets.UTF_8);
                 conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
                 conn.setRequestMethod("POST");
@@ -81,7 +107,6 @@ public class DifyServiceImpl implements DifyService {
 
                 log.info("[Dify] 连接建立成功，开始读取流式响应");
 
-                // 使用 BufferedReader 逐行读取，保证SSE正确按行分割
                 InputStream inputStream = conn.getInputStream();
                 BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
 
@@ -89,7 +114,6 @@ public class DifyServiceImpl implements DifyService {
                 int chunkCount = 0;
                 while ((line = reader.readLine()) != null) {
                     if (line.startsWith("data:")) {
-                        // 移除 "data:" 前缀，处理可能的空格
                         String data = line.substring(5).trim();
                         if (data.isBlank()) {
                             continue;
@@ -110,8 +134,7 @@ public class DifyServiceImpl implements DifyService {
                     }
                 }
 
-                // 最后发送结束标记
-                sink.tryEmitNext(new DifyStreamChunk("message_end", "", null, null, true));
+                sink.tryEmitNext(new DifyStreamChunk("message_end", "", null, null, true, List.of()));
                 sink.tryEmitComplete();
 
                 log.info("[Dify] 流式响应完成，总共 {} 个chunk", chunkCount);
@@ -131,12 +154,88 @@ public class DifyServiceImpl implements DifyService {
         return sink.asFlux();
     }
 
+    @Override
+    public DifyUploadedFile uploadFile(BotConfig config, String userId, byte[] bytes, String filename, String mimeType) {
+        if (bytes == null || bytes.length == 0) {
+            throw new IllegalArgumentException("Dify 文件上传字节为空");
+        }
+        String safeFilename = filename == null || filename.isBlank() ? "upload.bin" : filename;
+        String safeMime = mimeType == null || mimeType.isBlank() ? "application/octet-stream" : mimeType;
+        String difyType = safeMime.toLowerCase().startsWith("image/") ? "image" : "document";
+
+        HttpURLConnection conn = null;
+        try {
+            String url = normalizeBaseUrl(config.getDifyUrl()) + "/files/upload";
+            String boundary = "----DifyBoundary" + UUID.randomUUID().toString().replace("-", "");
+            conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Authorization", "Bearer " + config.getDifyApiKey());
+            conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+            conn.setDoOutput(true);
+
+            try (DataOutputStream out = new DataOutputStream(conn.getOutputStream())) {
+                writeFormField(out, boundary, "user", userId);
+                writeFormField(out, boundary, "type", difyType);
+
+                out.writeBytes("--" + boundary + "\r\n");
+                out.writeBytes("Content-Disposition: form-data; name=\"file\"; filename=\""
+                        + escapeQuotes(safeFilename) + "\"\r\n");
+                out.writeBytes("Content-Type: " + safeMime + "\r\n\r\n");
+                out.write(bytes);
+                out.writeBytes("\r\n");
+                out.writeBytes("--" + boundary + "--\r\n");
+                out.flush();
+            }
+
+            int statusCode = conn.getResponseCode();
+            if (statusCode < 200 || statusCode >= 300) {
+                String errorBody = readErrorStream(conn);
+                log.error("[Dify] 文件上传失败: status={}, body={}", statusCode, errorBody);
+                throw new IllegalStateException("Dify 文件上传失败，状态码：" + statusCode + "，错误：" + errorBody);
+            }
+
+            try (InputStream in = conn.getInputStream();
+                 ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+                byte[] data = new byte[4096];
+                int n;
+                while ((n = in.read(data)) != -1) {
+                    buffer.write(data, 0, n);
+                }
+                JsonNode node = objectMapper.readTree(buffer.toByteArray());
+                String fileId = node.path("id").asText(null);
+                if (fileId == null || fileId.isBlank()) {
+                    throw new IllegalStateException("Dify 文件上传未返回文件 id: " + node);
+                }
+                log.info("[Dify] 文件上传成功: fileId={}, name={}, type={}", fileId, safeFilename, difyType);
+                return new DifyUploadedFile(fileId, difyType, safeFilename, safeMime);
+            }
+        } catch (Exception ex) {
+            log.error("[Dify] 文件上传异常: filename={}", safeFilename, ex);
+            throw new IllegalStateException("Dify 文件上传异常", ex);
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+    }
+
+    private void writeFormField(DataOutputStream out, String boundary, String name, String value) throws Exception {
+        out.writeBytes("--" + boundary + "\r\n");
+        out.writeBytes("Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n");
+        out.write(value.getBytes(StandardCharsets.UTF_8));
+        out.writeBytes("\r\n");
+    }
+
+    private String escapeQuotes(String value) {
+        return value.replace("\"", "\\\"");
+    }
+
     /**
-     * 解析 data 字段的 JSON
-     * Dify SSE 格式说明:
-     * - message 事件: 流式返回文本片段，answer 字段是增量文本
-     * - message_end 事件: 流式结束
-     * - workflow_finished 事件: 工作流结束
+     * 解析 Dify SSE data JSON
+     * 支持的事件：
+     * - message：answer 增量文本，可能包含 message_files 数组
+     * - message_file：独立推送一个附件（图片/文件）
+     * - message_end / workflow_finished：结束标记
      */
     private DifyStreamChunk parseDataJson(String json) throws Exception {
         JsonNode node = objectMapper.readTree(json);
@@ -146,18 +245,44 @@ public class DifyServiceImpl implements DifyService {
         String conversationId = node.path("conversation_id").asText(null);
         boolean completed = "message_end".equals(event) || "workflow_finished".equals(event);
 
-        // 只在debug需要的时候打开，默认不打印每个chunk，避免日志过多
-        // 如果需要调试可以取消注释下面这行
-        // if (!answer.isBlank()) {
-        //     log.debug("[Dify] 收到增量文本: event={}, 长度={}", event, answer.length());
-        // }
+        List<DifyMessageFile> files = new ArrayList<>();
+        if ("message_file".equals(event)) {
+            DifyMessageFile file = parseMessageFile(node);
+            if (file != null) {
+                files.add(file);
+            }
+        } else if (node.hasNonNull("message_files") && node.path("message_files").isArray()) {
+            Iterator<JsonNode> it = node.path("message_files").elements();
+            while (it.hasNext()) {
+                DifyMessageFile file = parseMessageFile(it.next());
+                if (file != null) {
+                    files.add(file);
+                }
+            }
+        }
 
-        return new DifyStreamChunk(event, answer, taskId, conversationId, completed);
+        return new DifyStreamChunk(event, answer, taskId, conversationId, completed, files);
     }
 
-    /**
-     * 读取错误响应内容
-     */
+    private DifyMessageFile parseMessageFile(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        String id = node.path("id").asText(null);
+        String type = node.path("type").asText("");
+        String url = node.path("url").asText(null);
+        String filename = node.hasNonNull("filename")
+                ? node.path("filename").asText()
+                : node.path("name").asText(null);
+        String mimeType = node.hasNonNull("mime_type")
+                ? node.path("mime_type").asText()
+                : null;
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        return new DifyMessageFile(id, type, url, filename, mimeType);
+    }
+
     private String readErrorStream(HttpURLConnection conn) {
         try {
             InputStream errorStream = conn.getErrorStream();
@@ -170,11 +295,6 @@ public class DifyServiceImpl implements DifyService {
         }
     }
 
-    /**
-     * 标准化 Dify URL
-     * - 移除末尾的斜杠
-     * - 如果没有 /v1 后缀，自动添加
-     */
     private String normalizeBaseUrl(String difyUrl) {
         String value = difyUrl.endsWith("/") ? difyUrl.substring(0, difyUrl.length() - 1) : difyUrl;
         if (value.endsWith("/v1")) {
