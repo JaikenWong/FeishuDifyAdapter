@@ -168,8 +168,12 @@
 
 ### 1. 访问与登录
 
-1. 浏览器访问：`http://<服务器>:8080`（默认端口 `8080`）。
-2. 未登录会进入登录页；默认账号见下文 `application.yml`（**生产环境务必修改**）。
+1. 浏览器访问：`http://<服务器>:8081`（默认端口 `8081`）。
+2. 未登录会进入登录页；默认管理员账号：
+   - 用户名：`admin`
+   - 密码：`admin123`
+   
+   **生产环境部署前务必修改默认密码**！
 
 ### 2. 添加机器人配置
 
@@ -200,9 +204,10 @@
 
 | 配置 | 说明 |
 |------|------|
-| `server.port` | HTTP 端口，默认 `8080` |
+| `server.port` | HTTP 端口，默认 `8081` |
 | `spring.datasource.url` | H2 文件库路径；**相对路径相对进程工作目录**，换目录启动会换库，生产建议改为**固定绝对路径** |
-| `app.auth.default-admin-username` / `default-admin-password` | 默认登录账号，**部署前请修改** |
+| `app.auth.default-admin-username` | 默认管理员用户名，默认 `admin` |
+| `app.auth.default-admin-password` | 默认管理员密码，默认 `admin123`，**部署前请修改** |
 
 可通过 `application-local.yml`（已加入 `.gitignore`）覆盖本地配置。
 
