@@ -26,7 +26,7 @@
 | 能力 | 说明 |
 |------|------|
 | 长连接收消息 | 使用飞书 `com.lark.oapi.ws.Client`，无需公网 HTTP 事件回调地址 |
-| Dify 流式对话 | `POST /chat-messages`，SSE 按行解析，卡片增量更新 |
+| Dify 流式对话 | `POST /chat-messages`，SSE 按行解析，**每 20 字符增量更新卡片**平衡流畅度与API调用次数 |
 | 多轮会话 | 按「机器人配置 + Dify 用户标识 + 飞书 chat」复用 `conversation_id`（见下文） |
 | 用户上下文 | 可选：飞书通讯录姓名/工号/邮箱等传入 Dify `inputs`；Dify `user` 优先用工号 |
 | 多模态 | 文本 / 图片 / 文件 / 富文本（post）入站；出站解析 Dify 附件并渲染卡片 |

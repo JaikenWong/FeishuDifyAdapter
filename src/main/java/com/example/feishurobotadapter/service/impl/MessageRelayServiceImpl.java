@@ -62,8 +62,7 @@ public class MessageRelayServiceImpl implements MessageRelayService {
     private static final String THINKING_PATTERN = "**思考中…**\n\n⏳ 已等待 %d 秒";
     private static final Duration STREAM_TIMEOUT = Duration.ofMinutes(5);
     private static final long THINKING_REFRESH_SECONDS = 2;
-    private static final int MIN_BUFFER_CHARS = 20;
-    private static final long MIN_UPDATE_INTERVAL_MS = 300;
+    private static final int UPDATE_INTERVAL_CHARS = 20;
 
     private final DifyService difyService;
     private final FeishuService feishuService;
@@ -210,8 +209,6 @@ public class MessageRelayServiceImpl implements MessageRelayService {
                                 cachedFileLinks
                         );
                     }
-                    int[] bufferedChars = {0};
-                    long[] lastUpdateTime = {System.currentTimeMillis()};
                     difyService.streamChat(config, difyUserId, convToUse, difyInputs, finalQuestion, difyFiles)
                             .doOnNext(chunk -> {
                                 chunkCount[0]++;
@@ -235,16 +232,15 @@ public class MessageRelayServiceImpl implements MessageRelayService {
                                 }
                                 if (hasText) {
                                     answer.set(answer.get() + chunk.answerChunk());
-                                    bufferedChars[0] += chunk.answerChunk().length();
                                 }
                                 if (hasFiles) {
                                     processDifyAttachments(config, chunk.newFiles(), cachedImageKeys, cachedFileLinks);
                                 }
 
-                                long now = System.currentTimeMillis();
-                                long elapsedSinceLastUpdate = now - lastUpdateTime[0];
+                                int len = answer.get().length();
                                 boolean needUpdate = isCompleted
-                                        || (bufferedChars[0] >= MIN_BUFFER_CHARS && elapsedSinceLastUpdate >= MIN_UPDATE_INTERVAL_MS)
+                                        || (len % UPDATE_INTERVAL_CHARS == 0)
+                                        || (len < UPDATE_INTERVAL_CHARS)
                                         || (hasFiles && !chunk.newFiles().isEmpty());
 
                                 if (needUpdate) {
@@ -256,8 +252,6 @@ public class MessageRelayServiceImpl implements MessageRelayService {
                                     } catch (Exception ex) {
                                         log.warn("[MessageRelay] 更新回答卡片失败", ex);
                                     }
-                                    bufferedChars[0] = 0;
-                                    lastUpdateTime[0] = now;
                                 }
                             })
                             .blockLast(STREAM_TIMEOUT);

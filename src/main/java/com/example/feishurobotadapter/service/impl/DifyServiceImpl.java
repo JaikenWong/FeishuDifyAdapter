@@ -1,12 +1,5 @@
 package com.example.feishurobotadapter.service.impl;
 
-import com.example.feishurobotadapter.dto.DifyMessageFile;
-import com.example.feishurobotadapter.dto.DifyStreamChunk;
-import com.example.feishurobotadapter.dto.DifyUploadedFile;
-import com.example.feishurobotadapter.entity.BotConfig;
-import com.example.feishurobotadapter.service.DifyService;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
@@ -22,8 +15,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import lombok.extern.log4j.Log4j2;
+
 import org.springframework.stereotype.Service;
+
+import com.example.feishurobotadapter.dto.DifyMessageFile;
+import com.example.feishurobotadapter.dto.DifyStreamChunk;
+import com.example.feishurobotadapter.dto.DifyUploadedFile;
+import com.example.feishurobotadapter.entity.BotConfig;
+import com.example.feishurobotadapter.service.DifyService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import lombok.extern.log4j.Log4j2;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
 
@@ -107,40 +110,35 @@ public class DifyServiceImpl implements DifyService {
 
                 log.info("[Dify] 连接建立成功，开始读取流式响应");
 
-                InputStream inputStream = conn.getInputStream();
-                BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
-
-                String line;
-                int chunkCount = 0;
-                while ((line = reader.readLine()) != null) {
-                    if (line.startsWith("data:")) {
-                        String data = line.substring(5).trim();
-                        if (data.isBlank()) {
-                            continue;
-                        }
-                        if ("[DONE]".equals(data)) {
-                            log.info("[Dify] 收到 [DONE]，结束读取");
-                            break;
-                        }
-                        try {
-                            DifyStreamChunk chunk = parseDataJson(data);
-                            if (chunk != null) {
-                                chunkCount++;
-                                sink.tryEmitNext(chunk);
+                try (InputStream inputStream = conn.getInputStream();
+                     BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+                    String line;
+                    int chunkCount = 0;
+                    while ((line = reader.readLine()) != null) {
+                        if (line.startsWith("data:")) {
+                            String data = line.substring(5).trim();
+                            if (data.isBlank()) {
+                                continue;
                             }
-                        } catch (Exception ex) {
-                            log.warn("[Dify] 解析 chunk 失败: data={}", data, ex);
+                            if ("[DONE]".equals(data)) {
+                                log.info("[Dify] 收到 [DONE]，结束读取");
+                                break;
+                            }
+                            try {
+                                DifyStreamChunk chunk = parseDataJson(data);
+                                if (chunk != null) {
+                                    chunkCount++;
+                                    sink.tryEmitNext(chunk);
+                                }
+                            } catch (Exception ex) {
+                                log.warn("[Dify] 解析 chunk 失败: data={}", data, ex);
+                            }
                         }
                     }
+                    sink.tryEmitNext(new DifyStreamChunk("message_end", "", null, null, true, List.of()));
+                    sink.tryEmitComplete();
+                    log.info("[Dify] 流式响应完成，总共 {} 个chunk", chunkCount);
                 }
-
-                sink.tryEmitNext(new DifyStreamChunk("message_end", "", null, null, true, List.of()));
-                sink.tryEmitComplete();
-
-                log.info("[Dify] 流式响应完成，总共 {} 个chunk", chunkCount);
-
-                reader.close();
-                inputStream.close();
             } catch (Exception ex) {
                 log.error("[Dify] 调用异常", ex);
                 sink.tryEmitError(ex);
@@ -289,7 +287,9 @@ public class DifyServiceImpl implements DifyService {
             if (errorStream == null) {
                 return "";
             }
-            return new String(errorStream.readAllBytes(), StandardCharsets.UTF_8);
+            try (errorStream) {
+                return new String(errorStream.readAllBytes(), StandardCharsets.UTF_8);
+            }
         } catch (Exception e) {
             return "";
         }
