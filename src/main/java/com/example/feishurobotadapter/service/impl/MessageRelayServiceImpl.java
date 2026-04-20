@@ -1,18 +1,5 @@
 package com.example.feishurobotadapter.service.impl;
 
-import com.example.feishurobotadapter.dto.CardRenderContent;
-import com.example.feishurobotadapter.dto.DifyMessageFile;
-import com.example.feishurobotadapter.dto.DifyUploadedFile;
-import com.example.feishurobotadapter.dto.FeishuSenderProfile;
-import com.example.feishurobotadapter.entity.BotConfig;
-import com.example.feishurobotadapter.entity.ConversationRecord;
-import com.example.feishurobotadapter.service.ConversationRecordService;
-import com.example.feishurobotadapter.service.DifyService;
-import com.example.feishurobotadapter.service.FeishuService;
-import com.example.feishurobotadapter.service.MessageRelayService;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -35,8 +22,24 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import lombok.extern.log4j.Log4j2;
+
 import org.springframework.stereotype.Service;
+
+import com.example.feishurobotadapter.dto.CardRenderContent;
+import com.example.feishurobotadapter.dto.DifyMessageFile;
+import com.example.feishurobotadapter.dto.DifyUploadedFile;
+import com.example.feishurobotadapter.dto.FeishuSenderProfile;
+import com.example.feishurobotadapter.entity.BotConfig;
+import com.example.feishurobotadapter.entity.ConversationRecord;
+import com.example.feishurobotadapter.service.ConversationRecordService;
+import com.example.feishurobotadapter.service.DifyService;
+import com.example.feishurobotadapter.service.FeishuService;
+import com.example.feishurobotadapter.service.MessageRelayService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lark.oapi.service.im.v1.model.P2MessageReceiveV1;
+
+import lombok.extern.log4j.Log4j2;
 
 /**
  * 消息转发服务实现
@@ -59,6 +62,8 @@ public class MessageRelayServiceImpl implements MessageRelayService {
     private static final String THINKING_PATTERN = "**思考中…**\n\n⏳ 已等待 %d 秒";
     private static final Duration STREAM_TIMEOUT = Duration.ofMinutes(5);
     private static final long THINKING_REFRESH_SECONDS = 2;
+    private static final int MIN_BUFFER_CHARS = 20;
+    private static final long MIN_UPDATE_INTERVAL_MS = 300;
 
     private final DifyService difyService;
     private final FeishuService feishuService;
@@ -205,19 +210,20 @@ public class MessageRelayServiceImpl implements MessageRelayService {
                                 cachedFileLinks
                         );
                     }
+                    int[] bufferedChars = {0};
+                    long[] lastUpdateTime = {System.currentTimeMillis()};
                     difyService.streamChat(config, difyUserId, convToUse, difyInputs, finalQuestion, difyFiles)
                             .doOnNext(chunk -> {
                                 chunkCount[0]++;
 
                                 boolean hasText = chunk.answerChunk() != null && !chunk.answerChunk().isBlank();
                                 boolean hasFiles = chunk.newFiles() != null && !chunk.newFiles().isEmpty();
+                                boolean isCompleted = chunk.completed();
 
-                                if (hasText || hasFiles || chunk.completed()) {
-                                    if (firstChunkArrived.compareAndSet(false, true)) {
-                                        ScheduledFuture<?> future = thinkingFuture.get();
-                                        if (future != null) {
-                                            future.cancel(false);
-                                        }
+                                if ((hasText || hasFiles || isCompleted) && firstChunkArrived.compareAndSet(false, true)) {
+                                    ScheduledFuture<?> future = thinkingFuture.get();
+                                    if (future != null) {
+                                        future.cancel(false);
                                     }
                                 }
 
@@ -229,21 +235,29 @@ public class MessageRelayServiceImpl implements MessageRelayService {
                                 }
                                 if (hasText) {
                                     answer.set(answer.get() + chunk.answerChunk());
+                                    bufferedChars[0] += chunk.answerChunk().length();
                                 }
                                 if (hasFiles) {
                                     processDifyAttachments(config, chunk.newFiles(), cachedImageKeys, cachedFileLinks);
                                 }
 
-                                boolean needUpdate = hasText || hasFiles || chunk.completed();
+                                long now = System.currentTimeMillis();
+                                long elapsedSinceLastUpdate = now - lastUpdateTime[0];
+                                boolean needUpdate = isCompleted
+                                        || (bufferedChars[0] >= MIN_BUFFER_CHARS && elapsedSinceLastUpdate >= MIN_UPDATE_INTERVAL_MS)
+                                        || (hasFiles && !chunk.newFiles().isEmpty());
+
                                 if (needUpdate) {
                                     CardRenderContent content = buildCardContent(answer.get(), cachedImageKeys, cachedFileLinks);
                                     try {
                                         synchronized (updateLock) {
-                                            feishuService.updateCard(config, cardId.get(), content, !chunk.completed());
+                                            feishuService.updateCard(config, cardId.get(), content, !isCompleted);
                                         }
                                     } catch (Exception ex) {
                                         log.warn("[MessageRelay] 更新回答卡片失败", ex);
                                     }
+                                    bufferedChars[0] = 0;
+                                    lastUpdateTime[0] = now;
                                 }
                             })
                             .blockLast(STREAM_TIMEOUT);
