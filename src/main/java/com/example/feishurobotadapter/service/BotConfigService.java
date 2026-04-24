@@ -13,6 +13,8 @@ public interface BotConfigService {
 
     BotConfigResponse create(BotConfigRequest request);
 
+    BotConfigResponse update(Long id, BotConfigRequest request);
+
     BotConfigResponse toggleLongConnection(Long id, boolean enabled);
 
     void delete(Long id);

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>飞书机器人配置台</title>
     <link rel="icon" href="/logo.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/modern-normalize@3.0.1/modern-normalize.min.css">
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -125,6 +126,46 @@
                                     <input name="difyApiKey" type="password" placeholder="在 Dify 应用中复制 API Key" required autocomplete="new-password">
                                     <button type="button" class="ghost-btn input-action" data-toggle-target="difyApiKey">显示</button>
                                 </div>
+                            </label>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset class="form-section form-full">
+                    <legend>工号鉴权（可选）</legend>
+                    <div class="grid-form inner-grid">
+                        <div class="form-full">
+                            <label class="auth-toggle">
+                                <span class="auth-toggle-label">启用工号鉴权回调</span>
+                                <input name="employeeAuthEnabled" type="checkbox" value="true">
+                                <span class="auth-switch" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                        <div class="form-full">
+                            <p class="muted">鉴权来源固定为：飞书多维表格</p>
+                        </div>
+                        <div class="form-full bitable-grid">
+                            <label>
+                                <span>多维表格 App Token（通常是 bascn 开头）</span>
+                                <input name="employeeAuthBitableAppToken" placeholder="例如：bascnxxxxxxxx（从 Base 链接中获取）">
+                            </label>
+                            <label>
+                                <span>多维表格 Table/Sheet ID</span>
+                                <input name="employeeAuthBitableTableId" placeholder="例如：tblxxxxxxxx">
+                            </label>
+                            <label>
+                                <span>View ID（可选）</span>
+                                <input name="employeeAuthBitableViewId" placeholder="例如：vewxxxxxxxx">
+                            </label>
+                            <label>
+                                <span>工号列名</span>
+                                <input name="employeeAuthBitableEmployeeField" placeholder="默认：工号">
+                            </label>
+                        </div>
+                        <div class="form-full">
+                            <label>
+                                <span>鉴权失败固定回复</span>
+                                <textarea class="auth-denied-reply" name="employeeAuthDeniedReply" rows="3" placeholder="例如：暂无权限，请联系管理员开通。"></textarea>
                             </label>
                         </div>
                     </div>
