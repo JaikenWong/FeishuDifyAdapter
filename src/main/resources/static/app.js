@@ -9,6 +9,11 @@ const logoutBtn = document.getElementById('logoutBtn');
 const submitBtn = document.getElementById('submitBtn');
 const addConfigModal = document.getElementById('addConfigModal');
 const modalCloseBtn = document.getElementById('modalCloseBtn');
+const modalTitle = document.getElementById('modalTitle');
+const modalLead = document.querySelector('.modal-lead');
+let editingConfigId = null;
+let editingMaskedFields = {};
+const cardMap = new Map();
 
 async function ensureLogin() {
     const resp = await fetch('/api/auth/me');
@@ -47,6 +52,8 @@ async function loadCards() {
         return;
     }
     const cards = await response.json();
+    cardMap.clear();
+    cards.forEach(card => cardMap.set(String(card.id), card));
     if (!cards.length) {
         if (q) {
             cardList.innerHTML = `
@@ -82,6 +89,8 @@ function renderCard(card) {
                 <div><strong>App Secret</strong> ${escapeHtml(card.appSecretMasked)}</div>
                 <div><strong>Dify URL</strong> ${escapeHtml(card.difyUrl)}</div>
                 <div><strong>Dify Key</strong> ${escapeHtml(card.difyApiKeyMasked)}</div>
+                <div><strong>工号鉴权</strong> ${card.employeeAuthEnabled ? '已启用' : '未启用'}</div>
+                <div><strong>鉴权来源</strong> 飞书多维表格</div>
                 <div><strong>接入方式</strong> 飞书 SDK 长连接</div>
                 <div><strong>状态</strong> ${escapeHtml(card.lastStatusMessage || '-')}</div>
             </div>
@@ -89,6 +98,7 @@ function renderCard(card) {
                 <button type="button" data-action="toggle" data-id="${card.id}" data-enabled="${!card.longConnectionEnabled}">
                     ${card.longConnectionEnabled ? '关闭长连接' : '开启长连接'}
                 </button>
+                <button type="button" class="ghost-btn" data-action="edit" data-id="${card.id}" ${card.longConnectionEnabled ? 'disabled title="请先关闭长连接"' : ''}>修改配置</button>
                 <button type="button" class="ghost-btn" data-action="export" data-id="${card.id}">导出记录</button>
                 <button type="button" class="ghost-btn danger-btn" data-action="delete" data-id="${card.id}" data-robot-name="${encodeURIComponent(card.robotName)}">删除配置</button>
             </div>
@@ -110,6 +120,18 @@ function bindCardActions() {
     document.querySelectorAll('[data-action="export"]').forEach(button => {
         button.addEventListener('click', () => {
             window.location.href = `/api/bot-configs/${button.dataset.id}/export`;
+        });
+    });
+
+    document.querySelectorAll('[data-action="edit"]').forEach(button => {
+        button.addEventListener('click', () => {
+            const id = button.dataset.id;
+            const card = cardMap.get(String(id));
+            if (!card) {
+                alert('未找到配置数据，请先刷新页面');
+                return;
+            }
+            openEditModal(card);
         });
     });
 
@@ -155,6 +177,12 @@ function bindCardActions() {
 
 function openAddModal() {
     configForm.reset();
+    editingConfigId = null;
+    editingMaskedFields = {};
+    setSensitiveFieldRequired(true);
+    modalTitle.textContent = '新增机器人配置';
+    modalLead.textContent = '填写飞书与 Dify 参数后保存，即可在列表中看到新卡片。';
+    submitBtn.textContent = '创建配置';
     setFormMessage('', 'info');
     resetSecretFieldVisibility();
     resetSubmitButton();
@@ -165,6 +193,40 @@ function openAddModal() {
     if (firstInput) {
         requestAnimationFrame(() => firstInput.focus());
     }
+}
+
+function openEditModal(card) {
+    editingConfigId = card.id;
+    editingMaskedFields = {
+        appSecret: card.appSecretMasked || '',
+        difyApiKey: card.difyApiKeyMasked || '',
+        verificationToken: card.verificationTokenMasked || '',
+        encryptKey: card.encryptKeyMasked || ''
+    };
+    setSensitiveFieldRequired(false);
+    modalTitle.textContent = '修改机器人配置';
+    modalLead.textContent = '仅在长连接关闭状态下允许修改。已保存字段会回显，保持不改可直接提交。';
+    submitBtn.textContent = '保存修改';
+    configForm.reset();
+    configForm.elements.robotName.value = card.robotName || '';
+    configForm.elements.appId.value = card.appId || '';
+    configForm.elements.appSecret.value = editingMaskedFields.appSecret;
+    configForm.elements.verificationToken.value = editingMaskedFields.verificationToken;
+    configForm.elements.encryptKey.value = editingMaskedFields.encryptKey;
+    configForm.elements.difyUrl.value = card.difyUrl || '';
+    configForm.elements.difyApiKey.value = editingMaskedFields.difyApiKey;
+    configForm.elements.employeeAuthEnabled.checked = !!card.employeeAuthEnabled;
+    configForm.elements.employeeAuthDeniedReply.value = card.employeeAuthDeniedReply || '';
+    configForm.elements.employeeAuthBitableAppToken.value = card.employeeAuthBitableAppToken || '';
+    configForm.elements.employeeAuthBitableTableId.value = card.employeeAuthBitableTableId || '';
+    configForm.elements.employeeAuthBitableViewId.value = card.employeeAuthBitableViewId || '';
+    configForm.elements.employeeAuthBitableEmployeeField.value = card.employeeAuthBitableEmployeeField || '';
+    setFormMessage('', 'info');
+    resetSecretFieldVisibility();
+    resetSubmitButton();
+    addConfigModal.classList.add('is-open');
+    addConfigModal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
 }
 
 function closeAddModal() {
@@ -198,19 +260,42 @@ configForm.addEventListener('submit', async (event) => {
     const payload = Object.fromEntries(
         Array.from(formData.entries()).map(([key, value]) => [key, String(value).trim()])
     );
-    if (!payload.robotName || !payload.appId || !payload.appSecret || !payload.difyUrl || !payload.difyApiKey) {
-        setFormMessage('请先补全所有必填项（带 * 的字段）', 'error');
+    const creating = editingConfigId == null;
+    if (!creating) {
+        ['appSecret', 'difyApiKey', 'verificationToken', 'encryptKey'].forEach((field) => {
+            if (editingMaskedFields[field] && payload[field] === editingMaskedFields[field]) {
+                payload[field] = '';
+            }
+        });
+    }
+    payload.employeeAuthEnabled = formData.get('employeeAuthEnabled') === 'true';
+    if (!payload.robotName || !payload.appId || !payload.difyUrl) {
+        setFormMessage('请先补全机器人名称、App ID、Dify URL', 'error');
         resetSubmitButton();
         return;
+    }
+    if (creating && (!payload.appSecret || !payload.difyApiKey)) {
+        setFormMessage('新建配置时，App Secret 和 Dify API Key 必填', 'error');
+        resetSubmitButton();
+        return;
+    }
+    if (payload.employeeAuthEnabled) {
+        if (!payload.employeeAuthBitableAppToken || !payload.employeeAuthBitableTableId) {
+            setFormMessage('启用多维表格鉴权后，App Token 和 Table/Sheet ID 不能为空', 'error');
+            resetSubmitButton();
+            return;
+        }
     }
 
     payload.difyUrl = payload.difyUrl.replace(/\/+$/, '');
 
     let response;
     let result = {};
+    const requestUrl = creating ? '/api/bot-configs' : `/api/bot-configs/${editingConfigId}`;
+    const requestMethod = creating ? 'POST' : 'PUT';
     try {
-        response = await fetch('/api/bot-configs', {
-            method: 'POST',
+        response = await fetch(requestUrl, {
+            method: requestMethod,
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         });
@@ -227,8 +312,10 @@ configForm.addEventListener('submit', async (event) => {
         return;
     }
     configForm.reset();
+    editingConfigId = null;
+    editingMaskedFields = {};
     resetSecretFieldVisibility();
-    setFormMessage('创建成功', 'success');
+    setFormMessage(creating ? '创建成功' : '修改成功', 'success');
     resetSubmitButton();
     closeAddModal();
     await loadCards();
@@ -283,7 +370,18 @@ function setFormMessage(message, type) {
 
 function resetSubmitButton() {
     submitBtn.disabled = false;
-    submitBtn.textContent = '创建配置';
+    submitBtn.textContent = editingConfigId == null ? '创建配置' : '保存修改';
+}
+
+function setSensitiveFieldRequired(required) {
+    const appSecretInput = configForm.querySelector('input[name="appSecret"]');
+    const difyApiKeyInput = configForm.querySelector('input[name="difyApiKey"]');
+    if (appSecretInput) {
+        appSecretInput.required = required;
+    }
+    if (difyApiKeyInput) {
+        difyApiKeyInput.required = required;
+    }
 }
 
 function resetSecretFieldVisibility() {

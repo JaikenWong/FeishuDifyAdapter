@@ -50,17 +50,25 @@ public class BotConfigServiceImpl implements BotConfigService {
     public BotConfigResponse create(BotConfigRequest request) {
         LocalDateTime now = LocalDateTime.now();
         BotConfig config = new BotConfig();
-        config.setRobotName(request.robotName());
-        config.setAppId(request.appId());
-        config.setAppSecret(request.appSecret());
-        config.setVerificationToken(request.verificationToken());
-        config.setEncryptKey(request.encryptKey());
-        config.setDifyUrl(request.difyUrl());
-        config.setDifyApiKey(request.difyApiKey());
+        applyRequestToConfig(config, request, true);
         config.setLongConnectionEnabled(false);
         config.setLastStatusMessage("未启动");
         config.setCreatedAt(now);
         config.setUpdatedAt(now);
+        validateEmployeeAuthConfig(config);
+        return toResponse(botConfigRepository.save(config));
+    }
+
+    @Override
+    @Transactional
+    public BotConfigResponse update(Long id, BotConfigRequest request) {
+        BotConfig config = botConfigRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("配置不存在"));
+        if (Boolean.TRUE.equals(config.getLongConnectionEnabled())) {
+            throw new IllegalArgumentException("请先关闭长连接后再修改配置");
+        }
+        applyRequestToConfig(config, request, false);
+        config.setUpdatedAt(LocalDateTime.now());
+        validateEmployeeAuthConfig(config);
         return toResponse(botConfigRepository.save(config));
     }
 
@@ -102,11 +110,82 @@ public class BotConfigServiceImpl implements BotConfigService {
                 mask(config.getEncryptKey()),
                 config.getDifyUrl(),
                 mask(config.getDifyApiKey()),
+                config.getEmployeeAuthEnabled(),
+                config.getEmployeeAuthDeniedReply(),
+                config.getEmployeeAuthBitableAppToken(),
+                config.getEmployeeAuthBitableTableId(),
+                config.getEmployeeAuthBitableViewId(),
+                config.getEmployeeAuthBitableEmployeeField(),
                 config.getLongConnectionEnabled(),
                 config.getLastStatusMessage(),
                 config.getCreatedAt(),
                 config.getUpdatedAt()
         );
+    }
+
+    private void applyRequestToConfig(BotConfig config, BotConfigRequest request, boolean creating) {
+        config.setRobotName(requireText(request.robotName(), "机器人名称不能为空"));
+        config.setAppId(requireText(request.appId(), "飞书 App ID 不能为空"));
+        config.setDifyUrl(requireText(request.difyUrl(), "Dify URL 不能为空"));
+
+        String appSecret = emptyToNull(request.appSecret());
+        if (creating && appSecret == null) {
+            throw new IllegalArgumentException("飞书 App Secret 不能为空");
+        }
+        if (appSecret != null) {
+            config.setAppSecret(appSecret);
+        }
+
+        String difyApiKey = emptyToNull(request.difyApiKey());
+        if (creating && difyApiKey == null) {
+            throw new IllegalArgumentException("Dify API Key 不能为空");
+        }
+        if (difyApiKey != null) {
+            config.setDifyApiKey(difyApiKey);
+        }
+
+        String verificationToken = emptyToNull(request.verificationToken());
+        if (creating || verificationToken != null) {
+            config.setVerificationToken(verificationToken);
+        }
+        String encryptKey = emptyToNull(request.encryptKey());
+        if (creating || encryptKey != null) {
+            config.setEncryptKey(encryptKey);
+        }
+        config.setEmployeeAuthEnabled(Boolean.TRUE.equals(request.employeeAuthEnabled()));
+
+        config.setEmployeeAuthDeniedReply(emptyToNull(request.employeeAuthDeniedReply()));
+        config.setEmployeeAuthBitableAppToken(emptyToNull(request.employeeAuthBitableAppToken()));
+        config.setEmployeeAuthBitableTableId(emptyToNull(request.employeeAuthBitableTableId()));
+        config.setEmployeeAuthBitableViewId(emptyToNull(request.employeeAuthBitableViewId()));
+        config.setEmployeeAuthBitableEmployeeField(
+                emptyToNull(request.employeeAuthBitableEmployeeField()) == null
+                        ? "工号"
+                        : emptyToNull(request.employeeAuthBitableEmployeeField()));
+    }
+
+    private String requireText(String value, String errorMessage) {
+        String normalized = emptyToNull(value);
+        if (normalized == null) {
+            throw new IllegalArgumentException(errorMessage);
+        }
+        return normalized;
+    }
+
+    private String emptyToNull(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    private void validateEmployeeAuthConfig(BotConfig config) {
+        if (!Boolean.TRUE.equals(config.getEmployeeAuthEnabled())) {
+            return;
+        }
+        if (config.getEmployeeAuthBitableAppToken() == null || config.getEmployeeAuthBitableTableId() == null) {
+            throw new IllegalArgumentException("多维表格鉴权模式下，App Token 和 Table ID 不能为空");
+        }
     }
 
     private String mask(String value) {

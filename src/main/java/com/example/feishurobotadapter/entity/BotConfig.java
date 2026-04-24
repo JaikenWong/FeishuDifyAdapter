@@ -45,6 +45,24 @@ public class BotConfig {
     @Column(nullable = false)
     private Boolean longConnectionEnabled = Boolean.FALSE;
 
+    @Column(nullable = false)
+    private Boolean employeeAuthEnabled = Boolean.FALSE;
+
+    @Lob
+    private String employeeAuthDeniedReply;
+
+    @Column(length = 128)
+    private String employeeAuthBitableAppToken;
+
+    @Column(length = 128)
+    private String employeeAuthBitableTableId;
+
+    @Column(length = 128)
+    private String employeeAuthBitableViewId;
+
+    @Column(length = 128)
+    private String employeeAuthBitableEmployeeField = "工号";
+
     @Lob
     private String lastStatusMessage;
 

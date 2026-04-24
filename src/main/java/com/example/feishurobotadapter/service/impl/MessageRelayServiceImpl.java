@@ -33,6 +33,7 @@ import com.example.feishurobotadapter.entity.BotConfig;
 import com.example.feishurobotadapter.entity.ConversationRecord;
 import com.example.feishurobotadapter.service.ConversationRecordService;
 import com.example.feishurobotadapter.service.DifyService;
+import com.example.feishurobotadapter.service.EmployeePermissionService;
 import com.example.feishurobotadapter.service.FeishuService;
 import com.example.feishurobotadapter.service.MessageRelayService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -66,6 +67,7 @@ public class MessageRelayServiceImpl implements MessageRelayService {
 
     private final DifyService difyService;
     private final FeishuService feishuService;
+    private final EmployeePermissionService employeePermissionService;
     private final ConversationRecordService conversationRecordService;
     private final ObjectMapper objectMapper;
     private final ExecutorService executorService = Executors.newCachedThreadPool();
@@ -78,11 +80,13 @@ public class MessageRelayServiceImpl implements MessageRelayService {
     public MessageRelayServiceImpl(
             DifyService difyService,
             FeishuService feishuService,
+            EmployeePermissionService employeePermissionService,
             ConversationRecordService conversationRecordService,
             ObjectMapper objectMapper
     ) {
         this.difyService = difyService;
         this.feishuService = feishuService;
+        this.employeePermissionService = employeePermissionService;
         this.conversationRecordService = conversationRecordService;
         this.objectMapper = objectMapper;
     }
@@ -126,6 +130,16 @@ public class MessageRelayServiceImpl implements MessageRelayService {
 
         log.info("[MessageRelay] 问题内容: {}, 附件数: {}", parsed.text(), parsed.attachments().size());
 
+        var senderProfile = feishuService.resolveSenderProfile(config, event);
+        boolean hasPermission = employeePermissionService.hasPermission(config, senderProfile, openId);
+        if (!hasPermission) {
+            String denyReply = resolveDeniedReply(config);
+            log.info("[MessageRelay] 工号鉴权未通过，直接回复固定文案。openId={}", openId);
+            safeReplyTip(config, chatId, sourceMessageId, chatType, denyReply);
+            messageCache.remove(sourceMessageId);
+            return;
+        }
+
         AtomicReference<String> cardId = new AtomicReference<>();
         AtomicReference<String> responseMessageId = new AtomicReference<>();
         AtomicReference<String> answer = new AtomicReference<>("");
@@ -163,7 +177,6 @@ public class MessageRelayServiceImpl implements MessageRelayService {
             }, THINKING_REFRESH_SECONDS, THINKING_REFRESH_SECONDS, TimeUnit.SECONDS));
 
             Map<String, String> difyInputs = new LinkedHashMap<>();
-            var senderProfile = feishuService.resolveSenderProfile(config, event);
             if (senderProfile != null) {
                 difyInputs.putAll(senderProfile.toDifyInputVariables());
             }
@@ -554,6 +567,14 @@ public class MessageRelayServiceImpl implements MessageRelayService {
         } catch (Exception ex) {
             log.warn("[MessageRelay] 发送提示卡片失败", ex);
         }
+    }
+
+    private String resolveDeniedReply(BotConfig config) {
+        String configured = config.getEmployeeAuthDeniedReply();
+        if (configured == null || configured.isBlank()) {
+            return "**暂无权限**\n\n当前账号无访问权限，请联系管理员开通。";
+        }
+        return configured;
     }
 
     /** 重试新会话前清理本轮已累积的流式状态，避免脏数据叠在卡片上。 */
