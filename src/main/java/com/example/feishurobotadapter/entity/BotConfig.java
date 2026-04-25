@@ -45,7 +45,7 @@ public class BotConfig {
     @Column(nullable = false)
     private Boolean longConnectionEnabled = Boolean.FALSE;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "boolean default false")
     private Boolean employeeAuthEnabled = Boolean.FALSE;
 
     @Lob
@@ -62,6 +62,15 @@ public class BotConfig {
 
     @Column(length = 128)
     private String employeeAuthBitableEmployeeField = "工号";
+
+    @Column(length = 128)
+    private String difyInputNameVar = "feishu_sender_name";
+
+    @Column(length = 128)
+    private String difyInputEmployeeNoVar = "feishu_employee_no";
+
+    @Lob
+    private String difyInputMappingsJson;
 
     @Lob
     private String lastStatusMessage;

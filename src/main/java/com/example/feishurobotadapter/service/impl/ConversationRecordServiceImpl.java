@@ -6,6 +6,7 @@ import com.example.feishurobotadapter.service.ConversationRecordService;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ConversationRecordServiceImpl implements ConversationRecordService {
@@ -37,5 +38,14 @@ public class ConversationRecordServiceImpl implements ConversationRecordService 
                 )
                 .map(ConversationRecord::getDifyConversationId)
                 .filter(id -> id != null && !id.isBlank());
+    }
+
+    @Override
+    @Transactional
+    public int clearConversationContext(Long botConfigId, String difyUserKey, String chatId) {
+        if (botConfigId == null || difyUserKey == null || difyUserKey.isBlank() || chatId == null || chatId.isBlank()) {
+            return 0;
+        }
+        return conversationRecordRepository.clearConversationIdByScope(botConfigId, difyUserKey, chatId);
     }
 }

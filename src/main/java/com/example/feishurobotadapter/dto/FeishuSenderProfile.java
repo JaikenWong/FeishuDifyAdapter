@@ -14,23 +14,4 @@ public record FeishuSenderProfile(
         String email,
         String enName
 ) {
-
-    /**
-     * 合并进 Dify 请求体 {@code inputs}；仅包含非空字段。
-     */
-    public Map<String, String> toDifyInputVariables() {
-        Map<String, String> m = new LinkedHashMap<>();
-        putIfPresent(m, "feishu_sender_name", displayName);
-        putIfPresent(m, "feishu_full_name", fullName);
-        putIfPresent(m, "feishu_employee_no", employeeNo);
-        putIfPresent(m, "feishu_email", email);
-        putIfPresent(m, "feishu_en_name", enName);
-        return m;
-    }
-
-    private static void putIfPresent(Map<String, String> m, String key, String value) {
-        if (value != null && !value.isBlank()) {
-            m.put(key, value);
-        }
-    }
 }

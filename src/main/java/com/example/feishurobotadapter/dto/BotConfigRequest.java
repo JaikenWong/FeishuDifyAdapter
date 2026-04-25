@@ -1,5 +1,7 @@
 package com.example.feishurobotadapter.dto;
 
+import java.util.List;
+
 public record BotConfigRequest(
         String robotName,
         String appId,
@@ -13,6 +15,9 @@ public record BotConfigRequest(
         String employeeAuthBitableAppToken,
         String employeeAuthBitableTableId,
         String employeeAuthBitableViewId,
-        String employeeAuthBitableEmployeeField
+        String employeeAuthBitableEmployeeField,
+        String difyInputNameVar,
+        String difyInputEmployeeNoVar,
+        List<DifyInputMappingItem> difyInputMappings
 ) {
 }

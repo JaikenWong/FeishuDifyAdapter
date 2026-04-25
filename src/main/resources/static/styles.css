@@ -331,6 +331,20 @@ button:hover {
     min-width: 140px;
 }
 
+.config-card .card-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    align-items: stretch;
+}
+
+.config-card .card-actions button {
+    width: 100%;
+    padding: 9px 8px;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
 .tips-card {
     border: 1px dashed var(--line);
     border-radius: 16px;
@@ -611,6 +625,47 @@ body.modal-open {
     margin: 0;
 }
 
+.inline-help-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-left: 6px;
+    border-radius: 50%;
+    color: var(--accent-dark);
+    text-decoration: none;
+    border: 1px solid rgba(111, 78, 55, 0.35);
+    font-size: 11px;
+    line-height: 1;
+    vertical-align: middle;
+}
+
+.inline-help-link:hover {
+    background: rgba(191, 90, 54, 0.12);
+}
+
+.dify-mapping-table {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.dify-mapping-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) 180px auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.dify-mapping-row select {
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    padding: 11px 12px;
+    background: rgba(255, 255, 255, 0.72);
+    font-size: 14px;
+}
+
 @keyframes rise {
     from {
         opacity: 0;
@@ -635,6 +690,10 @@ body.modal-open {
     .config-card {
         max-width: none;
         width: 100%;
+    }
+
+    .config-card .card-actions {
+        grid-template-columns: 1fr;
     }
 
     .form-layout {
@@ -673,6 +732,10 @@ body.modal-open {
     }
 
     .bitable-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .dify-mapping-row {
         grid-template-columns: 1fr;
     }
 }

@@ -29,4 +29,14 @@ public interface ConversationRecordRepository extends JpaRepository<Conversation
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE ConversationRecord r SET r.difyUserKey = r.openId WHERE r.difyUserKey IS NULL AND r.openId IS NOT NULL AND r.openId <> ''")
     int backfillDifyUserKeyFromOpenIdWhereNull();
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE ConversationRecord r
+            SET r.difyConversationId = NULL
+            WHERE r.botConfigId = :botConfigId
+              AND r.difyUserKey = :difyUserKey
+              AND r.chatId = :chatId
+            """)
+    int clearConversationIdByScope(Long botConfigId, String difyUserKey, String chatId);
 }

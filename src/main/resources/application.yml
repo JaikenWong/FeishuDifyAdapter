@@ -10,7 +10,7 @@ spring:
     password:
   h2:
     console:
-      enabled: true
+      enabled: false
       path: /h2-console
   jpa:
     hibernate:
@@ -26,5 +26,5 @@ spring:
 app:
   auth:
     session-key: LOGIN_USER
-    default-admin-username: admin
-    default-admin-password: admin123
+    default-admin-username: ${ADMIN_USERNAME:admin}
+    default-admin-password: ${ADMIN_PASSWORD:admin123}
