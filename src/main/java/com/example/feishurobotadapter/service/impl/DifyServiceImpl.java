@@ -109,6 +109,9 @@ public class DifyServiceImpl implements DifyService {
                 }
 
                 log.info("[Dify] 连接建立成功，开始读取流式响应");
+                long responseStart = System.currentTimeMillis();
+                long firstSseAt = 0L;
+                long firstAnswerAt = 0L;
 
                 try (InputStream inputStream = conn.getInputStream();
                      BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
@@ -127,6 +130,12 @@ public class DifyServiceImpl implements DifyService {
                             try {
                                 DifyStreamChunk chunk = parseDataJson(data);
                                 if (chunk != null) {
+                                    if (firstSseAt == 0L) {
+                                        firstSseAt = System.currentTimeMillis();
+                                    }
+                                    if (firstAnswerAt == 0L && chunk.answerChunk() != null && !chunk.answerChunk().isBlank()) {
+                                        firstAnswerAt = System.currentTimeMillis();
+                                    }
                                     chunkCount++;
                                     sink.tryEmitNext(chunk);
                                 }
@@ -138,6 +147,10 @@ public class DifyServiceImpl implements DifyService {
                     sink.tryEmitNext(new DifyStreamChunk("message_end", "", null, null, true, List.of()));
                     sink.tryEmitComplete();
                     log.info("[Dify] 流式响应完成，总共 {} 个chunk", chunkCount);
+                    log.info("[Dify][Perf] 首包与总耗时: firstSseMs={}, firstAnswerMs={}, streamTotalMs={}",
+                            firstSseAt == 0L ? -1 : firstSseAt - responseStart,
+                            firstAnswerAt == 0L ? -1 : firstAnswerAt - responseStart,
+                            System.currentTimeMillis() - responseStart);
                 }
             } catch (Exception ex) {
                 log.error("[Dify] 调用异常", ex);

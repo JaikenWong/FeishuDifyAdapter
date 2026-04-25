@@ -1,6 +1,7 @@
 package com.example.feishurobotadapter.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record BotConfigResponse(
         Long id,
@@ -17,6 +18,9 @@ public record BotConfigResponse(
         String employeeAuthBitableTableId,
         String employeeAuthBitableViewId,
         String employeeAuthBitableEmployeeField,
+        String difyInputNameVar,
+        String difyInputEmployeeNoVar,
+        List<DifyInputMappingItem> difyInputMappings,
         Boolean longConnectionEnabled,
         String lastStatusMessage,
         LocalDateTime createdAt,

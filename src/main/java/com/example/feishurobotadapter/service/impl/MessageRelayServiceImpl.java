@@ -17,15 +17,22 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Service;
 
 import com.example.feishurobotadapter.dto.CardRenderContent;
+import com.example.feishurobotadapter.dto.DifyInputMappingItem;
 import com.example.feishurobotadapter.dto.DifyMessageFile;
 import com.example.feishurobotadapter.dto.DifyUploadedFile;
 import com.example.feishurobotadapter.dto.FeishuSenderProfile;
@@ -70,8 +77,11 @@ public class MessageRelayServiceImpl implements MessageRelayService {
     private final EmployeePermissionService employeePermissionService;
     private final ConversationRecordService conversationRecordService;
     private final ObjectMapper objectMapper;
-    private final ExecutorService executorService = Executors.newCachedThreadPool();
-    private final ScheduledExecutorService scheduledExecutor = Executors.newScheduledThreadPool(2);
+    private final ExecutorService executorService = new ThreadPoolExecutor(
+            4, 32, 60L, TimeUnit.SECONDS, new LinkedBlockingQueue<>(1000),
+            r -> { Thread t = new Thread(r, "message-relay"); t.setDaemon(true); return t; });
+    private final ScheduledExecutorService scheduledExecutor = Executors.newScheduledThreadPool(2,
+            r -> { Thread t = new Thread(r, "message-scheduler"); t.setDaemon(true); return t; });
     private final ConcurrentHashMap<String, Long> messageCache = new ConcurrentHashMap<>();
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -91,6 +101,24 @@ public class MessageRelayServiceImpl implements MessageRelayService {
         this.objectMapper = objectMapper;
     }
 
+    @PreDestroy
+    public void shutdown() {
+        executorService.shutdown();
+        scheduledExecutor.shutdown();
+        try {
+            if (!executorService.awaitTermination(10, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
+            }
+            if (!scheduledExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                scheduledExecutor.shutdownNow();
+            }
+        } catch (InterruptedException ex) {
+            executorService.shutdownNow();
+            scheduledExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
     @Override
     public void process(BotConfig config, P2MessageReceiveV1 event) {
         String sourceMessageId = event.getEvent().getMessage().getMessageId();
@@ -99,7 +127,13 @@ public class MessageRelayServiceImpl implements MessageRelayService {
             return;
         }
         log.info("[MessageRelay] 收到新消息: messageId={}, robot={}", sourceMessageId, config.getRobotName());
-        executorService.submit(() -> handleAsync(config, event));
+        try {
+            executorService.submit(() -> handleAsync(config, event));
+        } catch (RejectedExecutionException ex) {
+            messageCache.remove(sourceMessageId);
+            log.error("[MessageRelay] 线程池/队列已满，无法排队处理: messageId={}", sourceMessageId, ex);
+            throw ex;
+        }
     }
 
     private void handleAsync(BotConfig config, P2MessageReceiveV1 event) {
@@ -140,13 +174,30 @@ public class MessageRelayServiceImpl implements MessageRelayService {
             return;
         }
 
+        String unionId = event.getEvent().getSender().getSenderId().getUnionId();
+        String difyUserId = resolveDifyUserId(senderProfile, openId, unionId);
+        if (isClearCommand(parsed)) {
+            int cleared = conversationRecordService.clearConversationContext(config.getId(), difyUserId, chatId);
+            log.info("[MessageRelay] 用户触发 /clear，已清空会话上下文: botId={}, chatId={}, user={}, affected={}",
+                    config.getId(), chatId, difyUserId, cleared);
+            safeReplyTip(config, chatId, sourceMessageId, chatType, "**已清空上下文**\n\n下一条消息将开启新会话。");
+            messageCache.remove(sourceMessageId);
+            return;
+        }
+
         AtomicReference<String> cardId = new AtomicReference<>();
         AtomicReference<String> responseMessageId = new AtomicReference<>();
-        AtomicReference<String> answer = new AtomicReference<>("");
+        StringBuilder answer = new StringBuilder();
         AtomicReference<String> taskId = new AtomicReference<>();
         AtomicReference<String> conversationId = new AtomicReference<>();
         List<String> cachedImageKeys = Collections.synchronizedList(new ArrayList<>());
         List<CardRenderContent.FileLink> cachedFileLinks = Collections.synchronizedList(new ArrayList<>());
+        ThinkTagFilter thinkTagFilter = new ThinkTagFilter();
+        AtomicLong firstDifyChunkAt = new AtomicLong(0);
+        AtomicLong firstVisibleTextAt = new AtomicLong(0);
+        AtomicLong firstFeishuUpdateAt = new AtomicLong(0);
+        AtomicInteger cardUpdateCount = new AtomicInteger(0);
+        AtomicLong totalCardUpdateCostMs = new AtomicLong(0);
         AtomicBoolean firstChunkArrived = new AtomicBoolean(false);
         AtomicReference<ScheduledFuture<?>> thinkingFuture = new AtomicReference<>();
         Object updateLock = new Object();
@@ -177,14 +228,10 @@ public class MessageRelayServiceImpl implements MessageRelayService {
             }, THINKING_REFRESH_SECONDS, THINKING_REFRESH_SECONDS, TimeUnit.SECONDS));
 
             Map<String, String> difyInputs = new LinkedHashMap<>();
-            if (senderProfile != null) {
-                difyInputs.putAll(senderProfile.toDifyInputVariables());
-            }
-            String unionId = event.getEvent().getSender().getSenderId().getUnionId();
+            applyConfiguredDifyInputs(config, senderProfile, openId, unionId, difyInputs);
             if (unionId != null && !unionId.isBlank()) {
-                difyInputs.put("feishu_union_id", unionId);
+                difyInputs.putIfAbsent("feishu_union_id", unionId);
             }
-            String difyUserId = resolveDifyUserId(senderProfile, openId, unionId);
             log.info(
                     "[MessageRelay] Dify 用户标识 user={} (工号优先，否则 open_id/union_id), openId={}, profile={}, inputs={}",
                     difyUserId,
@@ -210,6 +257,7 @@ public class MessageRelayServiceImpl implements MessageRelayService {
             final String finalQuestion = question;
             String convToUse = difyConversationId;
             for (int attempt = 0; attempt < 2; attempt++) {
+                final long streamAttemptStart = System.currentTimeMillis();
                 try {
                     if (attempt > 0) {
                         prepareDifyStreamRetry(
@@ -221,12 +269,18 @@ public class MessageRelayServiceImpl implements MessageRelayService {
                                 cachedImageKeys,
                                 cachedFileLinks
                         );
+                        thinkTagFilter.reset();
                     }
                     difyService.streamChat(config, difyUserId, convToUse, difyInputs, finalQuestion, difyFiles)
                             .doOnNext(chunk -> {
                                 chunkCount[0]++;
+                                firstDifyChunkAt.compareAndSet(0, System.currentTimeMillis());
 
-                                boolean hasText = chunk.answerChunk() != null && !chunk.answerChunk().isBlank();
+                                String visibleChunk = thinkTagFilter.filter(chunk.answerChunk());
+                                boolean hasText = visibleChunk != null && !visibleChunk.isBlank();
+                                if (hasText) {
+                                    firstVisibleTextAt.compareAndSet(0, System.currentTimeMillis());
+                                }
                                 boolean hasFiles = chunk.newFiles() != null && !chunk.newFiles().isEmpty();
                                 boolean isCompleted = chunk.completed();
 
@@ -244,30 +298,40 @@ public class MessageRelayServiceImpl implements MessageRelayService {
                                     conversationId.set(chunk.conversationId());
                                 }
                                 if (hasText) {
-                                    answer.set(answer.get() + chunk.answerChunk());
+                                    answer.append(visibleChunk);
                                 }
                                 if (hasFiles) {
                                     processDifyAttachments(config, chunk.newFiles(), cachedImageKeys, cachedFileLinks);
                                 }
 
-                                int len = answer.get().length();
+                                int len = answer.length();
+                                boolean hasNewFiles = hasFiles && !chunk.newFiles().isEmpty();
+                                // 仅在有可见新增文本/附件/结束事件时更新卡片，避免 answerLen=0 时高频空刷新。
                                 boolean needUpdate = isCompleted
-                                        || (len % UPDATE_INTERVAL_CHARS == 0)
-                                        || (len < UPDATE_INTERVAL_CHARS)
-                                        || (hasFiles && !chunk.newFiles().isEmpty());
+                                        || hasNewFiles
+                                        || (hasText && ((len % UPDATE_INTERVAL_CHARS == 0) || (len < UPDATE_INTERVAL_CHARS)));
 
                                 if (needUpdate) {
-                                    CardRenderContent content = buildCardContent(answer.get(), cachedImageKeys, cachedFileLinks);
+                                    CardRenderContent content = buildCardContent(answer.toString(), cachedImageKeys, cachedFileLinks);
                                     try {
+                                        long updateStart = System.currentTimeMillis();
                                         synchronized (updateLock) {
                                             feishuService.updateCard(config, cardId.get(), content, !isCompleted);
                                         }
+                                        long cost = System.currentTimeMillis() - updateStart;
+                                        totalCardUpdateCostMs.addAndGet(cost);
+                                        int updateNo = cardUpdateCount.incrementAndGet();
+                                        firstFeishuUpdateAt.compareAndSet(0, System.currentTimeMillis());
+                                        log.debug("[MessageRelay][Perf] 飞书卡片更新完成: no={}, costMs={}, completed={}, answerLen={}",
+                                                updateNo, cost, isCompleted, answer.length());
                                     } catch (Exception ex) {
                                         log.warn("[MessageRelay] 更新回答卡片失败", ex);
                                     }
                                 }
                             })
                             .blockLast(STREAM_TIMEOUT);
+                    log.info("[MessageRelay][Perf] Dify 流读取完成: attempt={}, streamCostMs={}, chunkCount={}",
+                            attempt + 1, System.currentTimeMillis() - streamAttemptStart, chunkCount[0]);
                     break;
                 } catch (Exception ex) {
                     if (attempt == 0
@@ -290,7 +354,16 @@ public class MessageRelayServiceImpl implements MessageRelayService {
                 finalFuture.cancel(false);
             }
 
-            log.info("[MessageRelay] Dify 流式响应完成，总共 {} 个chunk，最终回答长度: {}", chunkCount[0], answer.get().length());
+            log.info("[MessageRelay] Dify 流式响应完成，总共 {} 个chunk，最终回答长度: {}", chunkCount[0], answer.length());
+            long now = System.currentTimeMillis();
+            log.info("[MessageRelay][Perf] 总耗时统计: totalMs={}, firstDifyChunkMs={}, firstVisibleTextMs={}, firstFeishuUpdateMs={}, feishuUpdateCount={}, feishuUpdateTotalCostMs={}, feishuUpdateAvgCostMs={}",
+                    now - startTime,
+                    firstDifyChunkAt.get() == 0 ? -1 : firstDifyChunkAt.get() - startTime,
+                    firstVisibleTextAt.get() == 0 ? -1 : firstVisibleTextAt.get() - startTime,
+                    firstFeishuUpdateAt.get() == 0 ? -1 : firstFeishuUpdateAt.get() - startTime,
+                    cardUpdateCount.get(),
+                    totalCardUpdateCostMs.get(),
+                    cardUpdateCount.get() == 0 ? -1 : (totalCardUpdateCostMs.get() / cardUpdateCount.get()));
 
             ConversationRecord record = new ConversationRecord();
             record.setBotConfigId(config.getId());
@@ -301,10 +374,11 @@ public class MessageRelayServiceImpl implements MessageRelayService {
             record.setDifyConversationId(conversationId.get());
             record.setDifyTaskId(taskId.get());
             record.setQuestion(buildQuestionForRecord(parsed, difyFiles));
-            record.setAnswer(buildAnswerForRecord(answer.get(), cachedFileLinks, cachedImageKeys.size()));
+            record.setAnswer(buildAnswerForRecord(answer.toString(), cachedFileLinks, cachedImageKeys.size()));
             record.setCreatedAt(LocalDateTime.now());
             conversationRecordService.save(record);
 
+            messageCache.remove(sourceMessageId);
             log.info("[MessageRelay] 消息处理完成");
         } catch (Exception ex) {
             ScheduledFuture<?> future = thinkingFuture.get();
@@ -582,7 +656,7 @@ public class MessageRelayServiceImpl implements MessageRelayService {
             int[] chunkCount,
             AtomicReference<String> conversationId,
             AtomicReference<String> taskId,
-            AtomicReference<String> answer,
+            StringBuilder answer,
             AtomicBoolean firstChunkArrived,
             List<String> cachedImageKeys,
             List<CardRenderContent.FileLink> cachedFileLinks
@@ -590,7 +664,7 @@ public class MessageRelayServiceImpl implements MessageRelayService {
         chunkCount[0] = 0;
         conversationId.set(null);
         taskId.set(null);
-        answer.set("");
+        answer.setLength(0);
         firstChunkArrived.set(false);
         cachedImageKeys.clear();
         cachedFileLinks.clear();
@@ -626,6 +700,107 @@ public class MessageRelayServiceImpl implements MessageRelayService {
             }
         }
         return sb.toString();
+    }
+
+    private static boolean isClearCommand(ParsedIncomingMessage parsed) {
+        if (parsed == null || parsed.attachments() == null || !parsed.attachments().isEmpty()) {
+            return false;
+        }
+        String text = parsed.text();
+        return text != null && "/clear".equalsIgnoreCase(text.trim());
+    }
+
+    /**
+     * 过滤模型输出中的 <think>...</think>，支持标签跨 chunk 断裂场景。
+     */
+    private static final class ThinkTagFilter {
+        private static final String OPEN = "<think>";
+        private static final String CLOSE = "</think>";
+        private String pending = "";
+        private boolean inThink = false;
+
+        String filter(String chunk) {
+            if (chunk == null || chunk.isEmpty()) {
+                return "";
+            }
+            pending += chunk;
+            StringBuilder out = new StringBuilder();
+            while (true) {
+                String lower = pending.toLowerCase(Locale.ROOT);
+                if (inThink) {
+                    int closeIdx = lower.indexOf(CLOSE);
+                    if (closeIdx < 0) {
+                        int keep = Math.min(pending.length(), CLOSE.length() - 1);
+                        pending = pending.substring(pending.length() - keep);
+                        return out.toString();
+                    }
+                    pending = pending.substring(closeIdx + CLOSE.length());
+                    inThink = false;
+                    continue;
+                }
+                int openIdx = lower.indexOf(OPEN);
+                if (openIdx < 0) {
+                    int keep = keepPartialSuffix(pending, OPEN);
+                    out.append(pending, 0, pending.length() - keep);
+                    pending = pending.substring(pending.length() - keep);
+                    return out.toString();
+                }
+                out.append(pending, 0, openIdx);
+                pending = pending.substring(openIdx + OPEN.length());
+                inThink = true;
+            }
+        }
+
+        void reset() {
+            pending = "";
+            inThink = false;
+        }
+
+        private int keepPartialSuffix(String value, String token) {
+            int max = Math.min(value.length(), token.length() - 1);
+            for (int len = max; len > 0; len--) {
+                String suffix = value.substring(value.length() - len).toLowerCase(Locale.ROOT);
+                String prefix = token.substring(0, len).toLowerCase(Locale.ROOT);
+                if (suffix.equals(prefix)) {
+                    return len;
+                }
+            }
+            return 0;
+        }
+    }
+
+    private void applyConfiguredDifyInputs(BotConfig config, FeishuSenderProfile senderProfile, String openId, String unionId, Map<String, String> difyInputs) {
+        List<DifyInputMappingItem> mappings = readDifyInputMappings(config);
+        for (DifyInputMappingItem item : mappings) {
+            if (item == null || item.variable() == null || item.variable().isBlank()) {
+                continue;
+            }
+            String value = resolveSourceValue(item.source(), senderProfile, openId, unionId);
+            if (value != null && !value.isBlank()) {
+                difyInputs.put(item.variable().trim(), value.trim());
+            }
+        }
+    }
+
+    private List<DifyInputMappingItem> readDifyInputMappings(BotConfig config) {
+        return DifyInputMappingItem.fromConfigJson(
+                config.getDifyInputMappingsJson(), config.getDifyInputNameVar(), config.getDifyInputEmployeeNoVar());
+    }
+
+    private static String resolveSourceValue(String source, FeishuSenderProfile senderProfile, String openId, String unionId) {
+        if (source == null) {
+            return null;
+        }
+        return switch (source.toLowerCase(Locale.ROOT)) {
+            case "display_name" -> senderProfile != null ? senderProfile.displayName() : null;
+            case "full_name" -> senderProfile != null ? senderProfile.fullName() : null;
+            case "employee_no" -> senderProfile != null ? senderProfile.employeeNo() : null;
+            case "email" -> senderProfile != null ? senderProfile.email() : null;
+            case "en_name" -> senderProfile != null ? senderProfile.enName() : null;
+            case "open_id" -> openId;
+            case "union_id" -> unionId;
+            default -> null;
+        };
     }
 
     private record ParsedIncomingMessage(String text, List<IncomingAttachment> attachments) {

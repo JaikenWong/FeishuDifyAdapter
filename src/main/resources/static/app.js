@@ -11,6 +11,8 @@ const addConfigModal = document.getElementById('addConfigModal');
 const modalCloseBtn = document.getElementById('modalCloseBtn');
 const modalTitle = document.getElementById('modalTitle');
 const modalLead = document.querySelector('.modal-lead');
+const difyInputMappingTable = document.getElementById('difyInputMappingTable');
+const addDifyMappingBtn = document.getElementById('addDifyMappingBtn');
 let editingConfigId = null;
 let editingMaskedFields = {};
 const cardMap = new Map();
@@ -184,6 +186,7 @@ function openAddModal() {
     modalLead.textContent = '填写飞书与 Dify 参数后保存，即可在列表中看到新卡片。';
     submitBtn.textContent = '创建配置';
     setFormMessage('', 'info');
+    resetDifyMappings();
     resetSecretFieldVisibility();
     resetSubmitButton();
     addConfigModal.classList.add('is-open');
@@ -215,6 +218,7 @@ function openEditModal(card) {
     configForm.elements.encryptKey.value = editingMaskedFields.encryptKey;
     configForm.elements.difyUrl.value = card.difyUrl || '';
     configForm.elements.difyApiKey.value = editingMaskedFields.difyApiKey;
+    resetDifyMappings(card.difyInputMappings || []);
     configForm.elements.employeeAuthEnabled.checked = !!card.employeeAuthEnabled;
     configForm.elements.employeeAuthDeniedReply.value = card.employeeAuthDeniedReply || '';
     configForm.elements.employeeAuthBitableAppToken.value = card.employeeAuthBitableAppToken || '';
@@ -260,6 +264,7 @@ configForm.addEventListener('submit', async (event) => {
     const payload = Object.fromEntries(
         Array.from(formData.entries()).map(([key, value]) => [key, String(value).trim()])
     );
+    payload.difyInputMappings = collectDifyMappings();
     const creating = editingConfigId == null;
     if (!creating) {
         ['appSecret', 'difyApiKey', 'verificationToken', 'encryptKey'].forEach((field) => {
@@ -399,3 +404,63 @@ function resetSecretFieldVisibility() {
 }
 
 ensureLogin().then(loadCards);
+
+function collectDifyMappings() {
+    const rows = Array.from(difyInputMappingTable.querySelectorAll('.dify-mapping-row'));
+    const mappings = [];
+    rows.forEach((row) => {
+        const variableInput = row.querySelector('input[name="difyMappingVariable"]');
+        const sourceSelect = row.querySelector('select[name="difyMappingSource"]');
+        const variable = (variableInput?.value || '').trim();
+        const source = (sourceSelect?.value || '').trim();
+        if (!variable || !source) {
+            return;
+        }
+        mappings.push({variable, source});
+    });
+    return mappings;
+}
+
+function addDifyMappingRow(data = {}) {
+    const row = document.createElement('div');
+    row.className = 'dify-mapping-row';
+    row.innerHTML = `
+        <input name="difyMappingVariable" placeholder="变量名，如 user_name" value="${escapeHtml(data.variable || '')}">
+        <select name="difyMappingSource">
+            <option value="display_name">展示名</option>
+            <option value="employee_no">工号</option>
+            <option value="full_name">姓名</option>
+            <option value="email">邮箱</option>
+            <option value="en_name">英文名</option>
+            <option value="open_id">Open ID</option>
+            <option value="union_id">Union ID</option>
+        </select>
+        <button type="button" class="ghost-btn dify-remove-row">删除</button>
+    `;
+    difyInputMappingTable.appendChild(row);
+    const sourceSelect = row.querySelector('select[name="difyMappingSource"]');
+    sourceSelect.value = data.source || 'display_name';
+    row.querySelector('.dify-remove-row').addEventListener('click', () => {
+        row.remove();
+        ensureDifyMappingRows();
+    });
+}
+
+function ensureDifyMappingRows() {
+    if (difyInputMappingTable.querySelectorAll('.dify-mapping-row').length === 0) {
+        resetDifyMappings();
+    }
+}
+
+function resetDifyMappings(mappings = null) {
+    difyInputMappingTable.innerHTML = '';
+    const rows = Array.isArray(mappings) && mappings.length
+        ? mappings
+        : [
+            {variable: 'feishu_sender_name', source: 'display_name'},
+            {variable: 'feishu_employee_no', source: 'employee_no'}
+        ];
+    rows.forEach((item) => addDifyMappingRow(item));
+}
+
+addDifyMappingBtn.addEventListener('click', () => addDifyMappingRow());
