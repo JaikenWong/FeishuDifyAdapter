@@ -60,7 +60,7 @@
 
 ### 3. 权限（scope）清单
 
-在开放平台「权限管理」中搜索并勾选；**创建版本并发布**，由**租户管理员审核**后生效。下列为与本项目**联调通过**的权限集合（可按实际产品裁剪：未使用 Aily、人事附件等功能时可去掉对应项）。
+在开放平台「权限管理」中搜索并勾选；**创建版本并发布**，由**租户管理员审核**后生效。下列为与本项目**联调通过**的权限集合（可按实际产品裁剪：未使用 Aily、多维表/Base、Wiki、人事附件等能力时可去掉对应项）。
 
 #### 3.1 完整 JSON（便于复制核对）
 
@@ -68,16 +68,19 @@
 {
   "scopes": {
     "tenant": [
-      "contact:user.basic_profile:readonly",
-      "contact:user.email:readonly",
       "aily:file:read",
       "aily:file:write",
       "application:application.app_message_stats.overview:readonly",
       "application:application:self_manage",
       "application:bot.menu:write",
+      "base:record:retrieve",
+      "bitable:app",
+      "bitable:app:readonly",
       "cardkit:card:read",
       "cardkit:card:write",
       "contact:contact.base:readonly",
+      "contact:user.basic_profile:readonly",
+      "contact:user.email:readonly",
       "contact:user.employee_id:readonly",
       "contact:user.employee_number:read",
       "corehr:file:download",
@@ -96,7 +99,10 @@
       "aily:file:write",
       "contact:contact.base:readonly",
       "im:chat.access_event.bot_p2p_chat:read",
-      "im:message"
+      "im:message",
+      "wiki:node:read",
+      "wiki:wiki",
+      "wiki:wiki:readonly"
     ]
   }
 }
@@ -115,7 +121,9 @@
 | `contact:user.email:readonly` | 用户邮箱（传入 Dify `inputs`） |
 | `contact:user.employee_id:readonly` | 租户内 user_id 等标识 |
 | `contact:user.employee_number:read` | **工号**（作 Dify `user` 与 `inputs` 时优先） |
-| `application:application:self_manage` / `application:bot.menu:write` 等 | 应用自管、机器人菜单等（按需在控制台配置） |
+| `application:application:self_manage` / `application:bot.menu:write` / `application:application.app_message_stats.overview:readonly` 等 | 应用自管、机器人菜单、应用消息统计只读等（按需在控制台配置） |
+| `base:record:retrieve` / `bitable:app` / `bitable:app:readonly` | 云文档-多维表（Base / Bitable）数据读取；**本仓库核心链路未用时可从控制台裁掉** |
+| `wiki:node:read` / `wiki:wiki` / `wiki:wiki:readonly` | 知识空间（Wiki）只读，**在 user 身份授权**场景下与 tenant 侧配合；未接 Wiki 可删 |
 | `aily:file:*`、`corehr:file:download` | 若未使用 Aily / CoreHR 文件能力，可按需移除 |
 
 **user** 侧 scope 为「用户身份」授权场景下使用；与 **tenant** 侧配合以控制台实际要求为准。
