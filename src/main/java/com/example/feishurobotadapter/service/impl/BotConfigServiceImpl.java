@@ -124,6 +124,8 @@ public class BotConfigServiceImpl implements BotConfigService {
                 config.getEmployeeAuthBitableTableId(),
                 config.getEmployeeAuthBitableViewId(),
                 config.getEmployeeAuthBitableEmployeeField(),
+                config.getEmployeeAuthAppId(),
+                maskOptional(config.getEmployeeAuthAppSecret()),
                 config.getDifyInputNameVar(),
                 config.getDifyInputEmployeeNoVar(),
                 readDifyInputMappings(config),
@@ -173,6 +175,12 @@ public class BotConfigServiceImpl implements BotConfigService {
                 emptyToNull(request.employeeAuthBitableEmployeeField()) == null
                         ? "工号"
                         : emptyToNull(request.employeeAuthBitableEmployeeField()));
+        String authAppId = emptyToNull(request.employeeAuthAppId());
+        config.setEmployeeAuthAppId(authAppId);
+        String authAppSecret = emptyToNull(request.employeeAuthAppSecret());
+        if (creating || authAppSecret != null || authAppId == null) {
+            config.setEmployeeAuthAppSecret(authAppSecret);
+        }
         config.setDifyInputNameVar(
                 emptyToNull(request.difyInputNameVar()) == null
                         ? "feishu_sender_name"
@@ -206,6 +214,11 @@ public class BotConfigServiceImpl implements BotConfigService {
         if (config.getEmployeeAuthBitableAppToken() == null || config.getEmployeeAuthBitableTableId() == null) {
             throw new IllegalArgumentException("多维表格鉴权模式下，App Token 和 Table ID 不能为空");
         }
+        boolean hasAuthAppId = emptyToNull(config.getEmployeeAuthAppId()) != null;
+        boolean hasAuthAppSecret = emptyToNull(config.getEmployeeAuthAppSecret()) != null;
+        if (hasAuthAppId != hasAuthAppSecret) {
+            throw new IllegalArgumentException("鉴权专用 App ID 与 App Secret 需同时填写，或同时留空");
+        }
     }
 
     private String validateDifyUrl(String url) {
@@ -232,6 +245,13 @@ public class BotConfigServiceImpl implements BotConfigService {
             return "******";
         }
         return value.substring(0, 3) + "******" + value.substring(value.length() - 3);
+    }
+
+    private String maskOptional(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return mask(value);
     }
 
     private String writeDifyInputMappings(BotConfigRequest request, BotConfig config) {

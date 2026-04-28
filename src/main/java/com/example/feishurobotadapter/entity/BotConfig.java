@@ -64,6 +64,12 @@ public class BotConfig {
     private String employeeAuthBitableEmployeeField = "工号";
 
     @Column(length = 128)
+    private String employeeAuthAppId;
+
+    @Column(length = 256)
+    private String employeeAuthAppSecret;
+
+    @Column(length = 128)
     private String difyInputNameVar = "feishu_sender_name";
 
     @Column(length = 128)

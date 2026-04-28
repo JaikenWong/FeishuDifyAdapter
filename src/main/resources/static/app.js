@@ -93,6 +93,7 @@ function renderCard(card) {
                 <div><strong>Dify Key</strong> ${escapeHtml(card.difyApiKeyMasked)}</div>
                 <div><strong>工号鉴权</strong> ${card.employeeAuthEnabled ? '已启用' : '未启用'}</div>
                 <div><strong>鉴权来源</strong> 飞书多维表格</div>
+                <div><strong>鉴权凭证</strong> ${card.employeeAuthAppId ? `专用应用（${escapeHtml(card.employeeAuthAppId)}）` : '复用当前机器人'}</div>
                 <div><strong>接入方式</strong> 飞书 SDK 长连接</div>
                 <div><strong>状态</strong> ${escapeHtml(card.lastStatusMessage || '-')}</div>
             </div>
@@ -204,7 +205,8 @@ function openEditModal(card) {
         appSecret: card.appSecretMasked || '',
         difyApiKey: card.difyApiKeyMasked || '',
         verificationToken: card.verificationTokenMasked || '',
-        encryptKey: card.encryptKeyMasked || ''
+        encryptKey: card.encryptKeyMasked || '',
+        employeeAuthAppSecret: card.employeeAuthAppSecretMasked || ''
     };
     setSensitiveFieldRequired(false);
     modalTitle.textContent = '修改机器人配置';
@@ -225,6 +227,8 @@ function openEditModal(card) {
     configForm.elements.employeeAuthBitableTableId.value = card.employeeAuthBitableTableId || '';
     configForm.elements.employeeAuthBitableViewId.value = card.employeeAuthBitableViewId || '';
     configForm.elements.employeeAuthBitableEmployeeField.value = card.employeeAuthBitableEmployeeField || '';
+    configForm.elements.employeeAuthAppId.value = card.employeeAuthAppId || '';
+    configForm.elements.employeeAuthAppSecret.value = editingMaskedFields.employeeAuthAppSecret;
     setFormMessage('', 'info');
     resetSecretFieldVisibility();
     resetSubmitButton();
@@ -267,7 +271,7 @@ configForm.addEventListener('submit', async (event) => {
     payload.difyInputMappings = collectDifyMappings();
     const creating = editingConfigId == null;
     if (!creating) {
-        ['appSecret', 'difyApiKey', 'verificationToken', 'encryptKey'].forEach((field) => {
+        ['appSecret', 'difyApiKey', 'verificationToken', 'encryptKey', 'employeeAuthAppSecret'].forEach((field) => {
             if (editingMaskedFields[field] && payload[field] === editingMaskedFields[field]) {
                 payload[field] = '';
             }
@@ -287,6 +291,13 @@ configForm.addEventListener('submit', async (event) => {
     if (payload.employeeAuthEnabled) {
         if (!payload.employeeAuthBitableAppToken || !payload.employeeAuthBitableTableId) {
             setFormMessage('启用多维表格鉴权后，App Token 和 Table/Sheet ID 不能为空', 'error');
+            resetSubmitButton();
+            return;
+        }
+        const hasAuthAppId = !!payload.employeeAuthAppId;
+        const hasAuthAppSecret = !!payload.employeeAuthAppSecret;
+        if (hasAuthAppId !== hasAuthAppSecret) {
+            setFormMessage('鉴权专用 App ID 与 App Secret 需同时填写，或同时留空', 'error');
             resetSubmitButton();
             return;
         }
@@ -390,7 +401,7 @@ function setSensitiveFieldRequired(required) {
 }
 
 function resetSecretFieldVisibility() {
-    const secretNames = ['appSecret', 'encryptKey', 'difyApiKey'];
+    const secretNames = ['appSecret', 'encryptKey', 'difyApiKey', 'employeeAuthAppSecret'];
     secretNames.forEach((name) => {
         const input = configForm.querySelector(`input[name="${name}"]`);
         const btn = configForm.querySelector(`[data-toggle-target="${name}"]`);

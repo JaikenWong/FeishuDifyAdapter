@@ -165,16 +165,18 @@ public class MessageRelayServiceImpl implements MessageRelayService {
         log.info("[MessageRelay] 问题内容: {}, 附件数: {}", parsed.text(), parsed.attachments().size());
 
         var senderProfile = feishuService.resolveSenderProfile(config, event);
-        boolean hasPermission = employeePermissionService.hasPermission(config, senderProfile, openId);
-        if (!hasPermission) {
+        String userId = event.getEvent().getSender().getSenderId().getUserId();
+        String unionId = event.getEvent().getSender().getSenderId().getUnionId();
+        var authDecision = employeePermissionService.checkPermission(config, senderProfile, openId, userId, unionId);
+        if (!authDecision.allowed()) {
             String denyReply = resolveDeniedReply(config);
             log.info("[MessageRelay] 工号鉴权未通过，直接回复固定文案。openId={}", openId);
             safeReplyTip(config, chatId, sourceMessageId, chatType, denyReply);
             messageCache.remove(sourceMessageId);
             return;
         }
+        senderProfile = mergeEmployeeNo(senderProfile, authDecision.employeeNo());
 
-        String unionId = event.getEvent().getSender().getSenderId().getUnionId();
         String difyUserId = resolveDifyUserId(senderProfile, openId, unionId);
         if (isClearCommand(parsed)) {
             int cleared = conversationRecordService.clearConversationContext(config.getId(), difyUserId, chatId);
@@ -801,6 +803,26 @@ public class MessageRelayServiceImpl implements MessageRelayService {
             case "union_id" -> unionId;
             default -> null;
         };
+    }
+
+    private static FeishuSenderProfile mergeEmployeeNo(FeishuSenderProfile original, String employeeNoFromAuth) {
+        String normalized = employeeNoFromAuth == null ? null : employeeNoFromAuth.trim();
+        if (normalized == null || normalized.isBlank()) {
+            return original;
+        }
+        if (original == null) {
+            return new FeishuSenderProfile(null, null, normalized, null, null);
+        }
+        if (original.employeeNo() != null && !original.employeeNo().isBlank()) {
+            return original;
+        }
+        return new FeishuSenderProfile(
+                original.displayName(),
+                original.fullName(),
+                normalized,
+                original.email(),
+                original.enName()
+        );
     }
 
     private record ParsedIncomingMessage(String text, List<IncomingAttachment> attachments) {

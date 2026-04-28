@@ -18,6 +18,8 @@ public record BotConfigResponse(
         String employeeAuthBitableTableId,
         String employeeAuthBitableViewId,
         String employeeAuthBitableEmployeeField,
+        String employeeAuthAppId,
+        String employeeAuthAppSecretMasked,
         String difyInputNameVar,
         String difyInputEmployeeNoVar,
         List<DifyInputMappingItem> difyInputMappings,

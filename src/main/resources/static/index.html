@@ -170,6 +170,17 @@
                                 <span>工号列名</span>
                                 <input name="employeeAuthBitableEmployeeField" placeholder="默认：工号">
                             </label>
+                            <label>
+                                <span>鉴权专用 App ID（可选）</span>
+                                <input name="employeeAuthAppId" placeholder="留空则复用当前机器人 App ID">
+                            </label>
+                            <label>
+                                <span>鉴权专用 App Secret（可选）</span>
+                                <div class="input-with-action">
+                                    <input name="employeeAuthAppSecret" type="password" placeholder="留空则复用当前机器人 App Secret" autocomplete="new-password">
+                                    <button type="button" class="ghost-btn input-action" data-toggle-target="employeeAuthAppSecret">显示</button>
+                                </div>
+                            </label>
                         </div>
                         <div class="form-full">
                             <label>

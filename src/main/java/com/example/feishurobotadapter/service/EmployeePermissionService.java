@@ -5,5 +5,8 @@ import com.example.feishurobotadapter.entity.BotConfig;
 
 public interface EmployeePermissionService {
 
-    boolean hasPermission(BotConfig config, FeishuSenderProfile senderProfile, String openId);
+    AuthDecision checkPermission(BotConfig config, FeishuSenderProfile senderProfile, String openId, String userId, String unionId);
+
+    record AuthDecision(boolean allowed, String employeeNo) {
+    }
 }

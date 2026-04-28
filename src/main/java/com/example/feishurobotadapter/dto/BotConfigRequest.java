@@ -16,6 +16,8 @@ public record BotConfigRequest(
         String employeeAuthBitableTableId,
         String employeeAuthBitableViewId,
         String employeeAuthBitableEmployeeField,
+        String employeeAuthAppId,
+        String employeeAuthAppSecret,
         String difyInputNameVar,
         String difyInputEmployeeNoVar,
         List<DifyInputMappingItem> difyInputMappings

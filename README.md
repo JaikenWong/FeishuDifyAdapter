@@ -23,15 +23,17 @@
 
 ## 功能概览
 
-| 能力 | 说明 |
-|------|------|
-| 长连接收消息 | 使用飞书 `com.lark.oapi.ws.Client`，无需公网 HTTP 事件回调地址 |
+
+| 能力        | 说明                                                            |
+| --------- | ------------------------------------------------------------- |
+| 长连接收消息    | 使用飞书 `com.lark.oapi.ws.Client`，无需公网 HTTP 事件回调地址               |
 | Dify 流式对话 | `POST /chat-messages`，SSE 按行解析，**每 20 字符增量更新卡片**平衡流畅度与API调用次数 |
-| 多轮会话 | 按「机器人配置 + Dify 用户标识 + 飞书 chat」复用 `conversation_id`（见下文） |
-| 会话重置 | 用户发送 `/clear` 可清空当前会话上下文，下一条消息强制新会话 |
-| 用户上下文 | 可选：飞书通讯录姓名/工号/邮箱等传入 Dify `inputs`；Dify `user` 优先用工号 |
-| 多模态 | 文本 / 图片 / 文件 / 富文本（post）入站；出站解析 Dify 附件并渲染卡片 |
-| 管理后台 | 登录后维护多机器人、开关长连接、导出 CSV 记录 |
+| 多轮会话      | 按「机器人配置 + Dify 用户标识 + 飞书 chat」复用 `conversation_id`（见下文）       |
+| 会话重置      | 用户发送 `/clear` 可清空当前会话上下文，下一条消息强制新会话                           |
+| 用户上下文     | 可选：飞书通讯录姓名/工号/邮箱等传入 Dify `inputs`；Dify `user` 优先用工号           |
+| 多模态       | 文本 / 图片 / 文件 / 富文本（post）入站；出站解析 Dify 附件并渲染卡片                  |
+| 管理后台      | 登录后维护多机器人、开关长连接、导出 CSV 记录                                     |
+
 
 ---
 
@@ -60,71 +62,126 @@
 
 ### 3. 权限（scope）清单
 
-在开放平台「权限管理」中搜索并勾选；**创建版本并发布**，由**租户管理员审核**后生效。下列为与本项目**联调通过**的权限集合（可按实际产品裁剪：未使用 Aily、多维表/Base、Wiki、人事附件等能力时可去掉对应项）。
+在开放平台「权限管理」中搜索并勾选；**创建版本并发布**，由**租户管理员审核**后生效。建议按最小权限从小到大使用以下三档模板。
 
-#### 3.1 完整 JSON（便于复制核对）
+#### 3.1 基础版：收消息 + 回复消息 + 交互式卡片
 
 ```json
 {
   "scopes": {
     "tenant": [
-      "aily:file:read",
-      "aily:file:write",
-      "application:application.app_message_stats.overview:readonly",
-      "application:application:self_manage",
-      "application:bot.menu:write",
-      "base:record:retrieve",
-      "bitable:app",
-      "bitable:app:readonly",
-      "cardkit:card:read",
-      "cardkit:card:write",
-      "contact:contact.base:readonly",
-      "contact:user.basic_profile:readonly",
-      "contact:user.email:readonly",
-      "contact:user.employee_id:readonly",
-      "contact:user.employee_number:read",
-      "corehr:file:download",
-      "event:ip_list",
-      "im:chat.access_event.bot_p2p_chat:read",
-      "im:chat.members:bot_access",
       "im:message",
-      "im:message.group_at_msg:readonly",
-      "im:message.p2p_msg:readonly",
       "im:message:readonly",
       "im:message:send_as_bot",
-      "im:resource"
+      "im:message.p2p_msg:readonly",
+      "im:message.group_at_msg:readonly",
+      "im:chat.members:bot_access",
+      "im:chat.access_event.bot_p2p_chat:read",
+      "cardkit:card:read",
+      "cardkit:card:write"
     ],
     "user": [
-      "aily:file:read",
-      "aily:file:write",
-      "contact:contact.base:readonly",
-      "im:chat.access_event.bot_p2p_chat:read",
       "im:message",
-      "wiki:node:read",
-      "wiki:wiki",
-      "wiki:wiki:readonly"
+      "im:chat.access_event.bot_p2p_chat:read"
     ]
   }
 }
 ```
 
-#### 3.2 与本服务相关的权限说明（tenant 为主）
+#### 3.2 增强版：在基础版上增加通讯录身份信息
 
-| Scope | 说明 |
-|-------|------|
-| `im:message` / `im:message:send_as_bot` / `im:message:readonly` 等 | 收发消息、以机器人发消息、读会话消息 |
-| `im:resource` | 下载消息内图片/文件（多模态转发 Dify） |
-| `im:chat.members:bot_access` / `im:chat.access_event.bot_p2p_chat:read` | 群成员与机器人单聊相关事件 |
-| `cardkit:card:read` / `cardkit:card:write` | 创建与更新交互式卡片 |
-| `contact:contact.base:readonly` | 通讯录基础能力，配合获取用户 |
-| `contact:user.basic_profile:readonly` | 用户基础资料 |
-| `contact:user.email:readonly` | 用户邮箱（传入 Dify `inputs`） |
-| `contact:user.employee_id:readonly` | 租户内 user_id 等标识 |
-| `contact:user.employee_number:read` | **工号**（作 Dify `user` 与 `inputs` 时优先） |
-| `application:application:self_manage` / `application:bot.menu:write` / `application:application.app_message_stats.overview:readonly` 等 | 应用自管、机器人菜单、应用消息统计只读等（按需在控制台配置） |
-| `base:record:retrieve` / `bitable:app` / `bitable:app:readonly` | 云文档-多维表（Base / Bitable）数据读取；**本仓库核心链路未用时可从控制台裁掉** |
-| `wiki:node:read` / `wiki:wiki` / `wiki:wiki:readonly` | 知识空间（Wiki）只读，**在 user 身份授权**场景下与 tenant 侧配合；未接 Wiki 可删 |
-| `aily:file:*`、`corehr:file:download` | 若未使用 Aily / CoreHR 文件能力，可按需移除 |
+```json
+{
+  "scopes": {
+    "tenant": [
+      "im:message",
+      "im:message:readonly",
+      "im:message:send_as_bot",
+      "im:message.p2p_msg:readonly",
+      "im:message.group_at_msg:readonly",
+      "im:chat.members:bot_access",
+      "im:chat.access_event.bot_p2p_chat:read",
+      "cardkit:card:read",
+      "cardkit:card:write",
+
+      "contact:contact.base:readonly",
+      "contact:user.basic_profile:readonly",
+      "contact:user.email:readonly",
+      "contact:user.employee_id:readonly",
+      "contact:user.employee_number:read"
+    ],
+    "user": [
+      "im:message",
+      "im:chat.access_event.bot_p2p_chat:read",
+      "contact:contact.base:readonly"
+    ]
+  }
+}
+```
+
+#### 3.3 完整版：在增强版上增加多维表（Base/Bitable）
+
+```json
+{
+  "scopes": {
+    "tenant": [
+      "im:message",
+      "im:message:readonly",
+      "im:message:send_as_bot",
+      "im:message.p2p_msg:readonly",
+      "im:message.group_at_msg:readonly",
+      "im:chat.members:bot_access",
+      "im:chat.access_event.bot_p2p_chat:read",
+      "cardkit:card:read",
+      "cardkit:card:write",
+
+      "contact:contact.base:readonly",
+      "contact:user.basic_profile:readonly",
+      "contact:user.email:readonly",
+      "contact:user.employee_id:readonly",
+      "contact:user.employee_number:read",
+
+      "base:record:retrieve",
+      "bitable:app",
+      "bitable:app:readonly"
+    ],
+    "user": [
+      "im:message",
+      "im:chat.access_event.bot_p2p_chat:read",
+      "contact:contact.base:readonly"
+    ]
+  }
+}
+```
+
+#### 3.4 说明
+
+- 上述三档覆盖本仓库核心链路；未接入的能力（如 Aily、CoreHR、Wiki）建议不要额外开通。
+- `contact:user.employee_number:read` 用于读取工号，作为 Dify `user` 与 `inputs` 时优先标识。
+- 若你确实接了 Base/Bitable 接口，请使用“完整版”；否则优先“增强版”。
+
+#### 3.5 多维表工号鉴权机制（当前实现）
+
+- 鉴权开启后，服务会使用飞书 SDK `appTableRecord.search`，按配置的工号字段（默认 `工号`）做**服务端 filter** 精确匹配。
+- 匹配条件为 `field_name = employeeField`、`operator = is`、`value = employeeNo`，并设置 `page_size=1`；只要命中 1 条记录即视为有权限。
+- 若配置了 `view_id`，查询会限定在该视图范围内，便于按业务分组控制可访问人群。
+- 支持配置**鉴权专用 App ID / App Secret**（可选，需成对填写）：已配置时使用该凭证访问多维表；未配置时回退复用当前机器人凭证。
+- 工号解析规则：
+  - 未配置鉴权专用应用：`senderProfile.employeeNo` 为空时，仅用 `open_id` 查询通讯录工号。
+  - 已配置鉴权专用应用：`senderProfile.employeeNo` 为空时，按 `user_id -> union_id` 依次查询通讯录工号（避免跨应用 `open_id` 问题）。
+- 鉴权通过后，若鉴权阶段解析到了工号，会在本次转发中回填到发送者上下文，确保 Dify `user` 和 `inputs.employee_no` 优先复用同一工号，避免后续按业务应用 `open_id` 再查失败导致标识漂移。
+- 不再采用“拉取多页记录后本地遍历”的方式，避免全表扫描带来的延迟与配额开销。
+- 参考文档：
+  - [记录筛选参数填写说明](https://open.feishu.cn/document/docs/bitable-v1/app-table-record/record-filter-guide)
+  - [获取多维表格元数据](https://open.feishu.cn/document/server-docs/docs/bitable-v1/app/get?appId=cli_REDACTED_APP_ID)
+
+#### 3.6 影响范围说明（是否影响其他机器人）
+
+- **不会全局影响所有机器人**：鉴权逻辑始终按「当前这条机器人配置」读取参数执行（按 `bot_config_id` 隔离）。
+- 若某机器人**未开启工号鉴权**，其行为与之前一致：直接进入 Dify 转发流程，不经过多维表鉴权。
+- 若某机器人开启了工号鉴权但**未配置鉴权专用 App ID/Secret**，会自动回退使用该机器人自身 App 凭证。
+- 若某机器人配置了**鉴权专用 App ID/Secret**，仅该机器人在“查工号 + 查多维表”时使用专用凭证，不会改变其它机器人。
+- 工号补查与多维表 `search filter` 仅在“工号鉴权开启”分支生效；且会根据是否配置专用鉴权应用选择不同工号查询路径。
 
 **user** 侧 scope 为「用户身份」授权场景下使用；与 **tenant** 侧配合以控制台实际要求为准。
 
@@ -154,7 +211,7 @@
 ### 多轮对话（conversation）
 
 - 本服务会把上一次成功返回的 **`conversation_id`** 与 **`user`** 一并持久化，下次同用户、同群继续传参给 Dify。
-- **`user` 标识规则**：若飞书通讯录能取到 **工号**，则优先用工号作为 Dify 的 `user`；否则使用 `open_id`，再否则 `union_id`。上传文件接口使用同一 `user`，以与对话一致。
+- **`user`** 标识规则：若飞书通讯录能取到 **工号**，则优先用工号作为 Dify 的 `user`；否则使用 `open_id`，再否则 `union_id`。上传文件接口使用同一 `user`，以与对话一致。
 - 用户发送 **`/clear`** 时，会清空当前「机器人 + 用户 + chat」下已保存的 `conversation_id`，并回复提示“下一条消息将开启新会话”。
 
 ### `<think>` 兼容处理
@@ -166,18 +223,21 @@
 
 在 Dify 应用里添加**同名输入变量**后，可在提示词或工作流中引用（语法以你使用的 Dify 版本为准）：
 
-| 变量名 | 含义 |
-|--------|------|
-| `feishu_sender_name` | 展示名 |
-| `feishu_full_name` | 通讯录姓名 |
-| `feishu_employee_no` | 工号 |
-| `feishu_email` | 邮箱 |
-| `feishu_en_name` | 英文名 |
-| `feishu_union_id` | 飞书 union_id |
+
+| 变量名                  | 含义          |
+| -------------------- | ----------- |
+| `feishu_sender_name` | 展示名         |
+| `feishu_full_name`   | 通讯录姓名       |
+| `feishu_employee_no` | 工号          |
+| `feishu_email`       | 邮箱          |
+| `feishu_en_name`     | 英文名         |
+| `feishu_union_id`    | 飞书 union_id |
+
 
 未开通通讯录权限时，部分字段可能为空。
 
 配置台支持「Dify input 映射表」动态添加多行，每行可配置：
+
 - Dify 变量名（如 `user_name`）
 - 来源字段（展示名/工号/姓名/邮箱/英文名）
 
@@ -189,22 +249,23 @@
 
 1. 浏览器访问：`http://<服务器>:8081`（默认端口 `8081`）。
 2. 未登录会进入登录页；默认管理员账号：
-   - 用户名：`admin`
-   - 密码：`admin123`
-   
+  - 用户名：`admin`
+  - 密码：`admin123`
    **生产环境部署前务必修改默认密码**！
 
 ### 2. 添加机器人配置
 
 登录后点击 **「添加配置」**，在弹窗中填写：
 
-| 区块 | 字段 | 说明 |
-|------|------|------|
-| 基础信息 | 机器人名称 | 仅用于本后台展示 |
-| 飞书接入 | App ID / App Secret | 开放平台应用凭证 |
+
+| 区块   | 字段                               | 说明                         |
+| ---- | -------------------------------- | -------------------------- |
+| 基础信息 | 机器人名称                            | 仅用于本后台展示                   |
+| 飞书接入 | App ID / App Secret              | 开放平台应用凭证                   |
 | 飞书接入 | Verification Token / Encrypt Key | 与事件订阅配置一致；不用加密可留空（视开放平台设置） |
-| Dify | Base URL | 你的 Dify 服务地址 |
-| Dify | API Key | 应用 API Key |
+| Dify | Base URL                         | 你的 Dify 服务地址               |
+| Dify | API Key                          | 应用 API Key                 |
+
 
 提交成功后，列表中会出现对应卡片。
 
@@ -227,12 +288,14 @@
 
 ## 配置项说明（`application.yml`）
 
-| 配置 | 说明 |
-|------|------|
-| `server.port` | HTTP 端口，默认 `8081` |
-| `spring.datasource.url` | H2 文件库路径；**相对路径相对进程工作目录**，换目录启动会换库，生产建议改为**固定绝对路径** |
-| `app.auth.default-admin-username` | 默认管理员用户名，默认 `admin` |
-| `app.auth.default-admin-password` | 默认管理员密码，默认 `admin123`，**部署前请修改** |
+
+| 配置                                | 说明                                                  |
+| --------------------------------- | --------------------------------------------------- |
+| `server.port`                     | HTTP 端口，默认 `8081`                                   |
+| `spring.datasource.url`           | H2 文件库路径；**相对路径相对进程工作目录**，换目录启动会换库，生产建议改为**固定绝对路径** |
+| `app.auth.default-admin-username` | 默认管理员用户名，默认 `admin`                                 |
+| `app.auth.default-admin-password` | 默认管理员密码，默认 `admin123`，**部署前请修改**                    |
+
 
 可通过 `application-local.yml`（已加入 `.gitignore`）覆盖本地配置。
 
@@ -295,6 +358,51 @@ mvn spring-boot:run
 ```
 飞书消息 → SDK 长连接 → 解析消息/附件 → Dify 流式 API
          → 更新飞书卡片 ← 累积文本与附件展示
+```
+
+### 鉴权 + 转发流程（详细）
+
+```mermaid
+flowchart TD
+    A[飞书消息事件进入<br/>SDK 长连接] --> B[解析 sender_id<br/>open_id/user_id/union_id]
+    B --> C[尝试获取 senderProfile]
+    C --> D{是否开启工号鉴权}
+
+    D -- 否 --> Z1[直接进入 Dify 转发]
+
+    D -- 是 --> H[选择鉴权凭证]
+    H --> H1{配置了鉴权专用 App?}
+    H1 -- 是 --> H2[使用专用 App ID/Secret]
+    H1 -- 否 --> H3[回退当前机器人 App ID/Secret]
+
+    H2 --> E[解析 employeeNo]
+    H3 --> E
+    E --> E1{senderProfile.employeeNo<br/>是否存在}
+    E1 -- 是 --> F[使用该工号]
+    E1 -- 否 --> E2{配置了鉴权专用 App?}
+    E2 -- 否 --> E3[按 open_id 查询工号]
+    E3 --> E4{查到工号?}
+    E4 -- 否 --> R1[鉴权失败<br/>返回固定拒绝文案]
+    E4 -- 是 --> F
+    E2 -- 是 --> E5[按 user_id 查询工号]
+    E5 --> E6{查到工号?}
+    E6 -- 是 --> F
+    E6 -- 否 --> E7[再按 union_id 查询工号]
+    E7 --> E8{查到工号?}
+    E8 -- 否 --> R1
+    E8 -- 是 --> F
+
+    F --> G[构造多维表 search filter<br/>field=工号列, op=is, value=employeeNo, page_size=1]
+    G --> I[用同一套已选鉴权凭证<br/>SDK 调用 appTableRecord.search]
+    I --> J{命中记录?}
+    J -- 否 --> R1
+    J -- 是 --> Z1
+
+    Z1 --> K[按机器人+用户+chat 查历史 conversation_id]
+    K --> L[调用 Dify 流式 chat-messages]
+    L --> M[过滤 think 标签/累积文本]
+    M --> N[增量更新飞书卡片]
+    N --> O[保存对话记录与 conversation_id]
 ```
 
 ---
