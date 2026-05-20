@@ -35,7 +35,7 @@ public class EmployeePermissionServiceImpl implements EmployeePermissionService 
         if (employeeNo == null) {
             log.info(
                     "[EmployeeAuth] 鉴权开启但工号为空，拒绝通过。openId={}, userId={}, unionId={}",
-                    safeTail(openId), safeTail(userId), safeTail(unionId)
+                    safeTail(openId), userId, safeTail(unionId)
             );
             return new AuthDecision(false, null);
         }
@@ -110,14 +110,14 @@ public class EmployeePermissionServiceImpl implements EmployeePermissionService 
                         "[EmployeeAuth] user_id 查询通讯录失败: code={}, msg={}, userId={}, authApp={}",
                         resp.getCode(),
                         resp.getMsg(),
-                        safeTail(id),
+                        id,
                         resolveAuthAppId(config)
                 );
                 return null;
             }
             return trimToNull(resp.getData().getUser().getEmployeeNo());
         } catch (Exception ex) {
-            log.warn("[EmployeeAuth] user_id 查询工号异常: userId={}, authApp={}", safeTail(id), resolveAuthAppId(config), ex);
+            log.warn("[EmployeeAuth] user_id 查询工号异常: userId={}, authApp={}", id, resolveAuthAppId(config), ex);
             return null;
         }
     }

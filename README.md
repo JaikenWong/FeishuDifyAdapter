@@ -198,6 +198,8 @@
 - 在 Web 配置台为某条机器人配置开启 **「长连接」** 后，进程内会创建 `com.lark.oapi.ws.Client` 并 `start()`。
 - 应用**重启**后，若数据库中该配置 `longConnectionEnabled = true`，启动逻辑会尝试**自动恢复**长连接（具体见 `LongConnectionStartupInitializer`）。
 - 关闭长连接会断开 WebSocket（实现上通过反射调用 SDK 内 `disconnect` 等，见 `InMemoryFeishuLongConnectionManager`）。
+- **连接与线程模型：** 每一条开启长连接的机器人配置在进程内各占**独立的** SDK 长连接（`InMemoryFeishuLongConnectionManager` 按 `configId` 维护多个 `Client`），并非「全局长连接单线程共用一条 WS」。下游处理消息时使用**共用线程池**异步执行（见 `MessageRelayServiceImpl`），因此也不是「整机房所有机器人只占一个线程」。
+- **`message_id` 去重与同一条 `@` 多个机器人：** 转发时用飞书消息的 **`message_id` 做一次去重**（避免重复投递时重复问答）。群内**在同一条气泡里 `@` 多个已接入本服务的机器人**时，各机器人收到的 `im.message.receive_v1` 往往仍对应**相同的 `message_id`**，最先通过去重的那个实例会继续走 Dify，其余会看到「消息已处理，跳过」而**不会再回复**。若需要每个机器人各答一轮，请**分多条消息**分别 `@`，或单次只 `@` 一个机器人。
 
 ---
 
@@ -280,7 +282,7 @@
 
 ### 5. 会话重置指令
 
-- 在飞书里发送：`/clear`
+- 在飞书里发送：`/clear`（群聊可 `@机器人 /clear`，会识别并剥离 @ 前缀）
 - 作用：清空当前会话上下文（仅当前机器人 + 当前用户 + 当前 chat）
 - 结果：机器人会回复确认文案，下一条消息从新会话开始
 

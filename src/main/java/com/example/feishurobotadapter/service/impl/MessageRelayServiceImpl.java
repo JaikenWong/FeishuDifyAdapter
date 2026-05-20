@@ -704,12 +704,25 @@ public class MessageRelayServiceImpl implements MessageRelayService {
         return sb.toString();
     }
 
+    /**
+     * 群聊 @ 机器人时正文常带 {@code <at>} 或 post 解析出的 {@code @名称}，剥离后再识别指令。
+     */
+    private static String normalizeCommandText(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        String s = text.trim();
+        s = s.replaceAll("(?is)<at\\s[^>]*>.*?</at>", " ");
+        s = s.replaceAll("@_user_\\d+", " ");
+        s = s.replaceAll("@\\S+", " ");
+        return s.trim().replaceAll("\\s+", " ");
+    }
+
     private static boolean isClearCommand(ParsedIncomingMessage parsed) {
         if (parsed == null || parsed.attachments() == null || !parsed.attachments().isEmpty()) {
             return false;
         }
-        String text = parsed.text();
-        return text != null && "/clear".equalsIgnoreCase(text.trim());
+        return "/clear".equalsIgnoreCase(normalizeCommandText(parsed.text()));
     }
 
     /**
